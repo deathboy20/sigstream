@@ -63,7 +63,7 @@ const UnifiedSidebar: React.FC<UnifiedSidebarProps> = ({
       </CardHeader>
       
       <CardContent className="flex-1 p-0 overflow-hidden">
-        <ScrollArea className="h-[calc(100vh-300px)]">
+        <ScrollArea className="max-h-[60vh] lg:max-h-[calc(100vh-300px)]">
           <div className="p-4 space-y-3">
             {activeTab === 'viewers' ? (
               // Viewers List

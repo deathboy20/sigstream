@@ -65,21 +65,23 @@ const Header: React.FC<HeaderProps> = ({ session, viewerCount, duration }) => {
                         Share Stream
                     </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
+                    <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md p-4 sm:p-6">
                     <DialogHeader>
                         <DialogTitle>Share Stream</DialogTitle>
                     </DialogHeader>
-                    <div className="flex flex-col items-center space-y-6 py-4">
-                        <div className="bg-white p-4 rounded-xl shadow-sm">
-                        <QRCode value={shareUrl} size={180} />
+                    <div className="flex flex-col items-center space-y-5 py-2">
+                        <div className="w-full flex items-center justify-center">
+                          <div className="bg-white p-3 rounded-xl shadow-sm">
+                            <QRCode value={shareUrl} size={160} />
+                          </div>
                         </div>
-                        <div className="w-full flex gap-2">
-                        <div className="flex-1 bg-muted p-2 rounded text-xs font-mono truncate border border-border">
-                            {shareUrl}
-                        </div>
-                        <Button size="icon" variant="outline" onClick={copyToClipboard}>
-                            <Copy className="h-4 w-4" />
-                        </Button>
+                        <div className="w-full flex flex-col sm:flex-row gap-2">
+                          <div className="flex-1 bg-muted p-2 rounded text-xs font-mono break-all border border-border">
+                              {shareUrl}
+                          </div>
+                          <Button size="icon" variant="outline" className="shrink-0 self-end sm:self-auto" onClick={copyToClipboard}>
+                              <Copy className="h-4 w-4" />
+                          </Button>
                         </div>
                     </div>
                     </DialogContent>

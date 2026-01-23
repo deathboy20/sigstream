@@ -38,7 +38,7 @@ const StreamPreview: React.FC<StreamPreviewProps> = ({
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden shadow-lg">
-      <div className="relative bg-black aspect-video">
+      <div className="relative bg-black aspect-video max-h-[60vh] sm:max-h-none">
         {stream ? (
           <>
             <video
@@ -46,22 +46,22 @@ const StreamPreview: React.FC<StreamPreviewProps> = ({
               autoPlay
               playsInline
               muted // Always muted locally to avoid feedback
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain sm:object-cover"
             />
             
             {/* Logo Overlay */}
-            <div className="absolute top-4 left-4 z-10">
+            <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10">
               <img 
                 src="/sigtrack-tube.png" 
                 alt="Sig-stream" 
-                className="h-12 w-auto drop-shadow-lg opacity-80"
+                className="h-8 sm:h-12 w-auto drop-shadow-lg opacity-80"
               />
             </div>
 
             {/* Live Badge */}
             {streamState.isStreaming && (
-              <div className="absolute top-4 right-20 z-10">
-                <span className="px-2 py-1 rounded bg-red-600 text-white text-xs font-bold animate-pulse flex items-center gap-1 shadow-sm">
+              <div className="absolute top-3 right-16 sm:top-4 sm:right-20 z-10">
+                <span className="px-2 py-1 rounded bg-red-600 text-white text-[10px] sm:text-xs font-bold animate-pulse flex items-center gap-1 shadow-sm">
                   <span className="w-2 h-2 rounded-full bg-white"></span> LIVE
                 </span>
               </div>
@@ -69,7 +69,7 @@ const StreamPreview: React.FC<StreamPreviewProps> = ({
 
             {/* Duration */}
             {streamState.isStreaming && (
-              <div className="absolute top-4 right-4 z-10 bg-black/60 px-2 py-1 rounded text-sm text-white font-mono border border-white/10 shadow-sm">
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 bg-black/60 px-2 py-1 rounded text-[10px] sm:text-sm text-white font-mono border border-white/10 shadow-sm">
                 {formatDuration(streamState.duration)}
               </div>
             )}

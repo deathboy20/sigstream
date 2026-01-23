@@ -336,7 +336,7 @@ const ViewerPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-border bg-card shadow-sm">
           <div className="flex items-center gap-2">
             <img src="/sigtrack-tube.png" alt="Sig-stream" className="h-8 w-auto" />
             <span className="text-lg font-bold text-primary">Sig-stream</span>
@@ -348,42 +348,42 @@ const ViewerPage: React.FC = () => {
         </div>
 
         {/* Video Player */}
-        <div className="flex-1 flex items-center justify-center p-6">
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-6">
           <div className="w-full max-w-4xl">
-            <div className="relative bg-stream-bg aspect-video rounded-lg overflow-hidden shadow-2xl border border-border">
+            <div className="relative bg-stream-bg aspect-video rounded-lg overflow-hidden shadow-2xl border border-border max-h-[70vh] sm:max-h-none">
               <video 
                 ref={videoRef}
                 autoPlay
                 playsInline
                 controls
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain sm:object-cover"
               />
               
               {/* Logo Overlay */}
-              <div className="absolute top-4 left-4 z-10 pointer-events-none">
+              <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 pointer-events-none">
                 <img 
                   src="/sigtrack-tube.png" 
                   alt="Sig-stream" 
-                  className="h-12 w-auto drop-shadow-lg opacity-80"
+                  className="h-8 sm:h-12 w-auto drop-shadow-lg opacity-80"
                 />
               </div>
 
               {/* Live Badge */}
-              <div className="absolute top-4 right-4 z-10 pointer-events-none">
-                <span className="bg-red-600 text-white px-3 py-1 rounded text-sm font-bold animate-pulse shadow-sm flex items-center gap-1">
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 pointer-events-none">
+                <span className="bg-red-600 text-white px-2 py-1 sm:px-3 sm:py-1 rounded text-xs sm:text-sm font-bold animate-pulse shadow-sm flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-white"></span> LIVE
                 </span>
               </div>
 
               {/* Stream Info */}
-              <div className="absolute bottom-4 left-4 flex items-center gap-4 text-xs text-white/80 pointer-events-none">
+              <div className="absolute bottom-4 left-4 hidden sm:flex items-center gap-4 text-xs text-white/80 pointer-events-none">
                 <span>Live</span>
                 <span>1920x1080</span>
               </div>
             </div>
 
             {/* Controls */}
-            <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm text-muted-foreground text-center sm:text-left">
               <span>Connection: Excellent • Bitrate: 2.5 Mbps</span>
               <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
                 Leave Stream

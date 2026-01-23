@@ -108,7 +108,7 @@ const HostDashboardContent: React.FC = () => {
         duration={streamState.duration}
       />
 
-      <div className="flex-1 container mx-auto p-6 overflow-hidden">
+      <div className="flex-1 container mx-auto px-4 py-4 sm:px-6 sm:py-6">
         {/* Error Alert */}
         {deviceError && (
           <Alert variant="destructive" className="mb-6">
@@ -117,9 +117,9 @@ const HostDashboardContent: React.FC = () => {
           </Alert>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-140px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:h-[calc(100vh-140px)]">
           {/* Left Column - Device Selector */}
-          <div className="lg:col-span-1 space-y-6 overflow-y-auto">
+          <div className="lg:col-span-1 space-y-6 lg:overflow-y-auto">
             <DeviceSelector
               videoDevices={videoDevices}
               audioDevices={audioDevices}
@@ -148,7 +148,7 @@ const HostDashboardContent: React.FC = () => {
           </div>
 
           {/* Right Column - Unified Viewers & Requests */}
-          <div className="lg:col-span-1 h-full">
+          <div className="lg:col-span-1 lg:h-full">
             <UnifiedSidebar
               viewers={viewers}
               pendingRequests={pendingRequests}
