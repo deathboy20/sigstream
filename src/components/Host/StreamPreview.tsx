@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Play, Pause, Square, VolumeX, Volume2 } from 'lucide-react';
+import { Play, Pause, Square, VolumeX, Volume2, Maximize2 } from 'lucide-react';
 import { StreamState } from '../../types/streaming.types';
 
 interface StreamPreviewProps {
@@ -34,6 +34,34 @@ const StreamPreview: React.FC<StreamPreviewProps> = ({
       const m = Math.floor((seconds % 3600) / 60);
       const s = seconds % 60;
       return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const handleFullscreen = () => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    const container = videoElement.parentElement ?? videoElement;
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+      return;
+    }
+
+    if (container.requestFullscreen) {
+      container.requestFullscreen();
+      return;
+    }
+
+    const legacyContainer = container as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void>;
+      msRequestFullscreen?: () => void;
+    };
+
+    if (legacyContainer.webkitRequestFullscreen) {
+      legacyContainer.webkitRequestFullscreen();
+      return;
+    }
+
+    legacyContainer.msRequestFullscreen?.();
   };
 
   return (
@@ -112,6 +140,13 @@ const StreamPreview: React.FC<StreamPreviewProps> = ({
              className="p-2 rounded-full bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
            >
              {streamState.isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+           </button>
+
+           <button
+             onClick={handleFullscreen}
+             className="p-2 rounded-full bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors"
+           >
+             <Maximize2 className="h-5 w-5" />
            </button>
         </div>
       </div>
