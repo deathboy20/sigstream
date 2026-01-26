@@ -56,6 +56,19 @@ export const api = {
     });
   },
 
+  setAdmissionMode: async (sessionId: string, mode: 'auto' | 'manual') => {
+    const response = await fetch(`${API_URL}/sessions/${sessionId}/admission`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to update admission mode');
+    }
+    return response.json();
+  },
+
   removeViewer: async (sessionId: string, viewerId: string) => {
     await fetch(`${API_URL}/sessions/${sessionId}/viewers/${viewerId}`, {
       method: 'DELETE',

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Radio, User, Lock, Users, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { api } from '../services/api';
 import { Viewer } from '../types/streaming.types';
 import { socket } from '../contexts/StreamContext';
@@ -21,27 +22,59 @@ const ViewerPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [sessionInfo, setSessionInfo] = useState<any>(null);
+  const [endDialogOpen, setEndDialogOpen] = useState(false);
+  const [endDialogMessage, setEndDialogMessage] = useState(
+    'Session ended. Kindly close the window or rejoin if you mistakenly disconnected.'
+  );
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<SimplePeer.Instance | null>(null);
+
+  const showSessionEnded = useCallback((message?: string) => {
+    if (message) {
+      setEndDialogMessage(message);
+    } else {
+      setEndDialogMessage('Session ended. Kindly close the window or rejoin if you mistakenly disconnected.');
+    }
+    setEndDialogOpen(true);
+    if (peerRef.current) {
+      peerRef.current.destroy();
+      peerRef.current = null;
+    }
+  }, []);
 
   // Fetch session info on load
   useEffect(() => {
     if (sessionId) {
         api.getSession(sessionId).then(data => {
             setSessionInfo(data);
+            if (data && data.isActive === false && viewerState !== 'join') {
+              showSessionEnded();
+            }
         }).catch(err => {
             console.error('Failed to load session info:', err);
             setError('Session not found or ended');
+            if (viewerState !== 'join') {
+              showSessionEnded();
+            }
         });
 
         // Poll for updates (e.g. viewer count)
         const interval = setInterval(() => {
-             api.getSession(sessionId).then(data => setSessionInfo(data)).catch(() => {});
+             api.getSession(sessionId).then(data => {
+               setSessionInfo(data);
+               if (data && data.isActive === false && viewerState !== 'join') {
+                 showSessionEnded();
+               }
+             }).catch(() => {
+               if (viewerState !== 'join') {
+                 showSessionEnded();
+               }
+             });
         }, 5000);
         return () => clearInterval(interval);
     }
-  }, [sessionId]);
+  }, [sessionId, viewerState, showSessionEnded]);
 
   // Timer for waiting room
   useEffect(() => {
@@ -73,7 +106,7 @@ const ViewerPage: React.FC = () => {
     try {
         const newViewer = await api.requestJoin(sessionId, name);
         setViewer(newViewer);
-        setViewerState('waiting');
+        setViewerState(newViewer.status === 'approved' ? 'watching' : 'waiting');
         
         // Join Socket Room
         socket.emit('join-session', sessionId);
@@ -134,6 +167,9 @@ const ViewerPage: React.FC = () => {
                         setViewerState('rejected');
                         setError('Your request was rejected by the host.');
                     }
+                } else {
+                    setViewerState('rejected');
+                    showSessionEnded('You were removed from the session. Kindly close the window or rejoin if you mistakenly disconnected.');
                 }
             } catch (e) {
                 console.error('Polling error', e);
@@ -141,7 +177,7 @@ const ViewerPage: React.FC = () => {
         }, 2000);
     }
     return () => clearInterval(interval);
-  }, [viewerState, viewer, sessionId]);
+  }, [viewerState, viewer, sessionId, showSessionEnded]);
 
   // WebRTC Connection Logic (when watching)
   useEffect(() => {
@@ -224,10 +260,55 @@ const ViewerPage: React.FC = () => {
     }
   }, [viewerState, viewer, sessionId]);
 
+  useEffect(() => {
+    if (viewerState !== 'watching' || !viewer || !sessionId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const session = await api.getSession(sessionId);
+        if (session && session.isActive === false) {
+          setViewerState('rejected');
+          showSessionEnded();
+          return;
+        }
+
+        const viewers = await api.getViewers(sessionId);
+        const myViewer = Object.values(viewers).find((v: any) => v.id === viewer.id) as Viewer | undefined;
+        if (!myViewer) {
+          setViewerState('rejected');
+          showSessionEnded('You were removed from the session. Kindly close the window or rejoin if you mistakenly disconnected.');
+        }
+      } catch (e) {
+        setViewerState('rejected');
+        showSessionEnded();
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [viewerState, viewer, sessionId, showSessionEnded]);
+
   // Join Request Form
   if (viewerState === 'join' || viewerState === 'rejected') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Dialog open={endDialogOpen} onOpenChange={setEndDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <div className="flex flex-col items-center gap-3">
+                <img src="/sigtrack-tube.png" alt="Sig-stream" className="h-10 w-auto" />
+                <DialogTitle>Session ended</DialogTitle>
+              </div>
+              <DialogDescription className="text-center">
+                {endDialogMessage}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="sm:justify-center">
+              <Button onClick={() => navigate(sessionId ? `/join/${sessionId}` : '/join')}>Rejoin</Button>
+              <Button variant="outline" onClick={() => navigate('/')}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Card className="w-full max-w-md border-border">
           <CardHeader className="text-center">
             <div className="flex items-center justify-center gap-2 mb-4">
@@ -293,6 +374,24 @@ const ViewerPage: React.FC = () => {
   if (viewerState === 'waiting') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Dialog open={endDialogOpen} onOpenChange={setEndDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <div className="flex flex-col items-center gap-3">
+                <img src="/sigtrack-tube.png" alt="Sig-stream" className="h-10 w-auto" />
+                <DialogTitle>Session ended</DialogTitle>
+              </div>
+              <DialogDescription className="text-center">
+                {endDialogMessage}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="sm:justify-center">
+              <Button onClick={() => navigate(sessionId ? `/join/${sessionId}` : '/join')}>Rejoin</Button>
+              <Button variant="outline" onClick={() => navigate('/')}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Card className="w-full max-w-md border-border">
           <CardHeader className="text-center">
             <div className="flex flex-col items-center justify-center gap-2 mb-4">
@@ -335,6 +434,24 @@ const ViewerPage: React.FC = () => {
   if (viewerState === 'watching') {
     return (
       <div className="min-h-screen bg-background flex flex-col">
+        <Dialog open={endDialogOpen} onOpenChange={setEndDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <div className="flex flex-col items-center gap-3">
+                <img src="/sigtrack-tube.png" alt="Sig-stream" className="h-10 w-auto" />
+                <DialogTitle>Session ended</DialogTitle>
+              </div>
+              <DialogDescription className="text-center">
+                {endDialogMessage}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="sm:justify-center">
+              <Button onClick={() => navigate(sessionId ? `/join/${sessionId}` : '/join')}>Rejoin</Button>
+              <Button variant="outline" onClick={() => navigate('/')}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Header */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-border bg-card shadow-sm">
           <div className="flex items-center gap-2">

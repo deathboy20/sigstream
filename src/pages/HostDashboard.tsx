@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { useStream, StreamProvider } from '../contexts/StreamContext';
 import { useMediaDevices } from '../hooks/useMediaDevices';
 import DeviceSelector from '../components/Host/DeviceSelector';
@@ -6,6 +6,10 @@ import StreamPreview from '../components/Host/StreamPreview';
 import Header from '../components/Host/Header';
 import UnifiedSidebar from '../components/Host/UnifiedSidebar';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { Button } from '../components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { api } from '../services/api';
+import { toast } from 'sonner';
 import { AlertCircle, Radio } from 'lucide-react';
 
 const HostDashboardContent: React.FC = () => {
@@ -41,6 +45,9 @@ const HostDashboardContent: React.FC = () => {
     toggleMute: toggleDeviceMute,
   } = useMediaDevices();
 
+  const [admissionDialogOpen, setAdmissionDialogOpen] = useState(false);
+  const [isSettingAdmission, setIsSettingAdmission] = useState(false);
+
   // Auto-create session on mount
   useEffect(() => {
     if (!session) {
@@ -74,9 +81,25 @@ const HostDashboardContent: React.FC = () => {
 
   const handleStartStreaming = useCallback(() => {
     if (stream) {
-      startStreaming();
+      setAdmissionDialogOpen(true);
     }
-  }, [stream, startStreaming]);
+  }, [stream]);
+
+  const handleAdmissionChoice = useCallback(async (mode: 'auto' | 'manual') => {
+    if (!session) return;
+    setIsSettingAdmission(true);
+    try {
+      await api.setAdmissionMode(session.id, mode);
+      setAdmissionDialogOpen(false);
+      startStreaming();
+      toast.success(mode === 'auto' ? 'Auto-admit enabled' : 'Manual approval enabled');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to update admission mode');
+    } finally {
+      setIsSettingAdmission(false);
+    }
+  }, [session, startStreaming]);
 
   const handleStopStreaming = useCallback(() => {
     stopStreaming();
@@ -116,6 +139,43 @@ const HostDashboardContent: React.FC = () => {
             <AlertDescription>{deviceError}</AlertDescription>
           </Alert>
         )}
+
+        <Dialog open={admissionDialogOpen} onOpenChange={setAdmissionDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Choose admission mode</DialogTitle>
+              <DialogDescription>
+                Decide how viewers join when you start streaming.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Button
+                className="w-full"
+                onClick={() => handleAdmissionChoice('auto')}
+                disabled={isSettingAdmission}
+              >
+                Admit all users once
+              </Button>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => handleAdmissionChoice('manual')}
+                disabled={isSettingAdmission}
+              >
+                Admit users by admin
+              </Button>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => setAdmissionDialogOpen(false)}
+                disabled={isSettingAdmission}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:h-[calc(100vh-140px)]">
           {/* Left Column - Device Selector */}

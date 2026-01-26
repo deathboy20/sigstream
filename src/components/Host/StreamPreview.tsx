@@ -1,6 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { Play, Pause, Square, VolumeX, Volume2, Maximize2 } from 'lucide-react';
+import React, { useRef, useEffect, useState } from 'react';
+import { Play, Pause, Square, VolumeX, Volume2, Maximize2, Circle } from 'lucide-react';
 import { StreamState } from '../../types/streaming.types';
+import { toast } from 'sonner';
 
 interface StreamPreviewProps {
   stream: MediaStream | null;
@@ -22,6 +23,11 @@ const StreamPreview: React.FC<StreamPreviewProps> = ({
   onToggleMute,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animationRef = useRef<number | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -29,11 +35,158 @@ const StreamPreview: React.FC<StreamPreviewProps> = ({
     }
   }, [stream]);
 
+  useEffect(() => {
+    if (!streamState.isStreaming || !stream) {
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+        recorderRef.current.stop();
+      }
+      if (isRecording) {
+        setIsRecording(false);
+      }
+    }
+  }, [streamState.isStreaming, stream, isRecording]);
+
+  useEffect(() => {
+    return () => {
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+        recorderRef.current.stop();
+      }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
+
   const formatDuration = (seconds: number) => {
       const h = Math.floor(seconds / 3600);
       const m = Math.floor((seconds % 3600) / 60);
       const s = seconds % 60;
       return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const getSupportedMimeType = () => {
+    const types = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
+    ];
+    return types.find(type => MediaRecorder.isTypeSupported(type));
+  };
+
+  const stopCanvasDrawing = () => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    canvasRef.current = null;
+  };
+
+  const createRecordingStream = async (videoElement: HTMLVideoElement, sourceStream: MediaStream) => {
+    const canvas = document.createElement('canvas');
+    canvasRef.current = canvas;
+
+    const width = videoElement.videoWidth || 1280;
+    const height = videoElement.videoHeight || 720;
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return sourceStream;
+    }
+
+    const logo = new Image();
+    logo.src = '/sigtrack-tube.png';
+    await logo.decode().catch(() => undefined);
+
+    const draw = () => {
+      context.drawImage(videoElement, 0, 0, width, height);
+      if (logo.naturalWidth) {
+        const targetWidth = Math.round(width * 0.12);
+        const targetHeight = Math.round((logo.naturalHeight / logo.naturalWidth) * targetWidth);
+        const padding = Math.round(width * 0.02);
+        context.drawImage(logo, padding, padding, targetWidth, targetHeight);
+      }
+      animationRef.current = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    const canvasStream = canvas.captureStream(30);
+    sourceStream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
+    return canvasStream;
+  };
+
+  const startRecording = async () => {
+    if (!stream) {
+      toast.error('No stream available to record');
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      toast.error('Recording is not supported in this browser');
+      return;
+    }
+    if (!videoRef.current) {
+      toast.error('Preview not ready');
+      return;
+    }
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
+      return;
+    }
+
+    if (videoRef.current.readyState < 2) {
+      await new Promise<void>((resolve) => {
+        const handler = () => {
+          videoRef.current?.removeEventListener('loadedmetadata', handler);
+          resolve();
+        };
+        videoRef.current?.addEventListener('loadedmetadata', handler);
+      });
+    }
+
+    const recordingStream = await createRecordingStream(videoRef.current, stream);
+    const mimeType = getSupportedMimeType();
+
+    if (!mimeType || !mimeType.includes('mp4')) {
+      toast.message('MP4 is not supported in this browser. Saving as WebM.');
+    }
+
+    const recorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
+
+    chunksRef.current = [];
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        chunksRef.current.push(event.data);
+      }
+    };
+    recorder.onstop = () => {
+      const mime = recorder.mimeType || 'video/webm';
+      const blob = new Blob(chunksRef.current, { type: mime });
+      const url = URL.createObjectURL(blob);
+      const extension = mime.includes('mp4') ? 'mp4' : 'webm';
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `sigstream-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      chunksRef.current = [];
+      stopCanvasDrawing();
+      toast.success('Recording saved');
+    };
+
+    recorder.start(1000);
+    recorderRef.current = recorder;
+    setIsRecording(true);
+    toast.success('Recording started');
+  };
+
+  const stopRecording = () => {
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+    }
+    setIsRecording(false);
   };
 
   const handleFullscreen = () => {
@@ -134,6 +287,14 @@ const StreamPreview: React.FC<StreamPreviewProps> = ({
               Stop Streaming
             </button>
           )}
+
+           <button
+             onClick={isRecording ? stopRecording : startRecording}
+             disabled={!streamState.isStreaming || !stream}
+             className={`p-2 rounded-full transition-colors ${isRecording ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'} ${!streamState.isStreaming || !stream ? 'opacity-50 cursor-not-allowed' : ''}`}
+           >
+             <Circle className="h-5 w-5 fill-current" />
+           </button>
 
            <button
              onClick={onToggleMute}

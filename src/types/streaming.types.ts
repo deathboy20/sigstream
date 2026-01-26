@@ -8,6 +8,7 @@ export interface Session {
   expiresAt: Date;
   viewerCount: number;
   streamSettings: StreamSettings;
+  admissionMode?: 'auto' | 'manual';
 }
 
 export interface StreamSettings {
