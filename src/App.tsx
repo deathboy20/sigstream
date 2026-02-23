@@ -3,8 +3,11 @@ import { Toaster as Sonner } from './components/ui/sonner';
 import { TooltipProvider } from './components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import MainNav from './components/MainNav';
 import HostDashboard from "./pages/HostDashboard";
 import ViewerPage from "./pages/ViewerPage";
+import ConferenceLanding from "./pages/ConferenceLanding";
+import ConferenceRoom from "./pages/ConferenceRoom";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -15,6 +18,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <MainNav />
         <Routes>
           {/* Host Dashboard as the default landing page */}
           <Route path="/" element={<HostDashboard />} />
@@ -29,6 +33,11 @@ const App = () => (
           <Route path="/join/:sessionId" element={<ViewerPage />} />
           <Route path="/session/:sessionId" element={<ViewerPage />} /> 
           {/* Added /session/:sessionId as I noticed SharePanel uses /session/ in previous turns */}
+
+          {/* Conference Routes */}
+          <Route path="/conference" element={<ConferenceLanding />} />
+          <Route path="/conference/:roomId" element={<ConferenceRoom />} />
+          <Route path="/join/conference/:roomId" element={<ConferenceRoom />} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
