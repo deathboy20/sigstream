@@ -33,41 +33,32 @@ export interface PendingRequest {
   sessionId: string;
 }
 
-// Device Types
-export interface MediaDevice {
-  deviceId: string;
-  label: string;
-  kind: 'videoinput' | 'audioinput' | 'audiooutput';
-  groupId: string;
+// Conference Types
+export interface Conference {
+  id: string;
+  createdBy: string;
+  createdAt: number;
+  isActive: boolean;
+  name: string;
+  description?: string;
+  roomMode: 'open' | 'moderated';
+  maxParticipants: number;
+  participants: Record<string, Participant>;
+  expiresAt: number;
+  settings: {
+    recordingEnabled: boolean;
+    screenShareEnabled: boolean;
+  };
 }
 
-export interface SelectedDevices {
-  videoDeviceId: string | null;
-  audioDeviceId: string | null;
+export interface Participant {
+  id: string;
+  name: string;
+  joinedAt: number;
+  status: 'waiting' | 'active' | 'rejected';
+  role: 'host' | 'participant';
 }
 
-// Socket Event Types
-export interface ViewerRequest {
-  requestId: string;
-  viewerName: string;
-  sessionId: string;
-  timestamp: Date;
-}
-
-export interface SignalingOffer {
-  sessionId: string;
-  viewerId: string;
-  sdp: RTCSessionDescriptionInit;
-}
-
-export interface SignalingAnswer {
-  sessionId: string;
-  viewerId: string;
-  sdp: RTCSessionDescriptionInit;
-}
-
-export interface IceCandidate {
-  sessionId: string;
   viewerId: string;
   candidate: RTCIceCandidateInit;
 }
