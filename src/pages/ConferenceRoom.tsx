@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Phone, Maximize2, Share2, Send, Users, MessageSquare, Loader2, AlertCircle } from 'lucide-react';
+import { Phone, Share2, Send, Users, MessageSquare, Loader2, AlertCircle, Mic, MicOff, Video, VideoOff } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
 import { useConference } from '../hooks/useConference';
+import ConferenceHeader from '../components/Conference/ConferenceHeader';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { api } from '../services/api';
 
 type ViewState = 'joining' | 'waiting' | 'active' | 'error';
 
@@ -44,7 +46,59 @@ const ConferenceRoom: React.FC = () => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
 
-  // Join conference on mount or when userNamechanges
+  // Validate room exists when component mounts
+  useEffect(() => {
+    const validateRoom = async () => {
+      if (!roomId) {
+        setError('Invalid room ID');
+        setViewState('error');
+        return;
+      }
+
+      try {
+        // Use API module for proper error handling
+        const conferenceData = await api.getConference(roomId);
+        
+        // Check if conference is still active
+        if (!conferenceData.isActive) {
+          setError('This conference has ended');
+          setViewState('error');
+          return;
+        }
+
+        // Check if conference has expired
+        if (conferenceData.expiresAt && new Date(conferenceData.expiresAt) < new Date()) {
+          setError('This conference has expired');
+          setViewState('error');
+          return;
+        }
+
+        // Room is valid, show join screen
+        setViewState('joining');
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load conference';
+        
+        if (errorMessage.includes('404') || errorMessage.includes('not found')) {
+          setError('Meeting not found or has been closed');
+        } else {
+          setError(errorMessage);
+        }
+        
+        console.error('Room validation error:', err);
+        setViewState('error');
+      }
+    };
+
+    validateRoom();
+  }, [roomId]);
+
+  // When join is successful and room is set, transition to active view
+  useEffect(() => {
+    if (room && viewState === 'joining' && room.id === roomId) {
+      setViewState('active');
+    }
+  }, [room, roomId, viewState]);
+
   const handleJoinConference = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userName.trim() || !roomId) {
@@ -56,22 +110,42 @@ const ConferenceRoom: React.FC = () => {
     setError(null);
 
     try {
-      // Get local media stream
-      const stream = await getLocalStream();
-      if (!stream) {
-        throw new Error('Failed to access media devices');
-      }
-
-      // Join room
+      // Join room with existing local stream
       await joinRoom(roomId, userName);
-      setViewState('active');
+      // State transition will happen via useEffect above
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to join conference';
-      setError(errorMessage);
+      
+      // Check if it's a room not found error
+      if (errorMessage.includes('404') || errorMessage.includes('not found')) {
+        setError('Meeting not found or has been closed');
+      } else if (errorMessage.includes('expired')) {
+        setError('This conference has expired');
+      } else if (errorMessage.includes('ended')) {
+        setError('This conference has ended');
+      } else {
+        setError(errorMessage);
+      }
       setViewState('error');
       toast.error('Join failed: ' + errorMessage);
     }
   };
+
+  // Initialize local stream when join screen is shown
+  useEffect(() => {
+    if ((viewState === 'joining' || viewState === 'error') && !localStream) {
+      const initializeMedia = async () => {
+        try {
+          await getLocalStream();
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Failed to access camera';
+          setError(errorMsg);
+          toast.error(errorMsg);
+        }
+      };
+      initializeMedia();
+    }
+  }, [viewState, localStream, getLocalStream]);
 
   // Set local video stream
   useEffect(() => {
@@ -148,62 +222,157 @@ const ConferenceRoom: React.FC = () => {
     );
   }
 
-  // Join screen
-  if (viewState === 'joining' || viewState === 'error') {
+  // Error screen
+  if (viewState === 'error') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-6">
-        <Card className="w-full max-w-md bg-slate-800 border-slate-700">
+        <Card className="bg-slate-800 border-slate-700 w-full max-w-md">
           <CardContent className="pt-6">
-            <div className="text-center mb-6">
-              <h1 className="text-2xl font-bold text-white mb-2">Join Conference</h1>
-              <p className="text-gray-300">Enter your name to join the room</p>
-            </div>
-
-            {error && (
-              <Alert variant="destructive" className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            <form onSubmit={handleJoinConference} className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-gray-300">Your Name</label>
-                <Input
-                  placeholder="Enter your name"
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
-                  className="bg-slate-700 border-slate-600 text-white placeholder-gray-500 mt-2"
-                  disabled={viewState === 'joining'}
-                />
-              </div>
-
-              <Button
-                type="submit"
-                disabled={viewState === 'joining' || !userName.trim()}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {viewState === 'joining' ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Joining...
-                  </>
-                ) : (
-                  'Join Conference'
-                )}
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
+            <div className="text-center">
+              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-white mb-2">Unable to Join</h2>
+              <p className="text-gray-300 mb-4">{error}</p>
+              <Button 
                 onClick={() => navigate('/conference')}
-                className="w-full bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                className="w-full bg-blue-600 hover:bg-blue-700"
               >
-                Cancel
+                Back to Conferences
               </Button>
-            </form>
+            </div>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // Join screen
+  if (viewState === 'joining') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-6">
+        <div className="w-full max-w-2xl">
+          <Card className="bg-slate-800 border-slate-700">
+            <CardContent className="pt-6">
+              <div className="text-center mb-6">
+                <h1 className="text-3xl font-bold text-white mb-2">Join Conference</h1>
+                <p className="text-gray-300">Set up your media and enter your name</p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Video Preview */}
+                <div className="flex flex-col gap-4">
+                  <div className="bg-slate-900 rounded-lg overflow-hidden aspect-video flex items-center justify-center border-2 border-slate-700">
+                    {localStream ? (
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full bg-black object-cover"
+                      />
+                    ) : (
+                      <div className="text-center">
+                        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-2" />
+                        <p className="text-gray-400 text-sm">Loading camera...</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Media Controls */}
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={handleToggleVideo}
+                      className={`flex-1 ${
+                        isVideoEnabled
+                          ? 'bg-blue-600/20 border-blue-500 text-blue-400 hover:bg-blue-600/30'
+                          : 'bg-red-600/20 border-red-500 text-red-400 hover:bg-red-600/30'
+                      }`}
+                    >
+                      {isVideoEnabled ? '📹' : '📹‍🚫'} {isVideoEnabled ? 'Camera On' : 'Camera Off'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleToggleAudio}
+                      className={`flex-1 ${
+                        isAudioEnabled
+                          ? 'bg-blue-600/20 border-blue-500 text-blue-400 hover:bg-blue-600/30'
+                          : 'bg-red-600/20 border-red-500 text-red-400 hover:bg-red-600/30'
+                      }`}
+                    >
+                      {isAudioEnabled ? '🎤' : '🔇'} {isAudioEnabled ? 'Mic On' : 'Muted'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Join Form */}
+                <form onSubmit={handleJoinConference} className="flex flex-col gap-4 justify-center">
+                  <div>
+                    <label className="text-sm font-medium text-gray-300 block mb-2">Your Name</label>
+                    <Input
+                      placeholder="Enter your name"
+                      value={userName}
+                      onChange={(e) => setUserName(e.target.value)}
+                      className="bg-slate-700 border-slate-600 text-white placeholder-gray-500"
+                      disabled={viewState === 'joining'}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-medium text-gray-300">Media Status</p>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          isVideoEnabled ? 'bg-green-500' : 'bg-red-500'
+                        }`}
+                      />
+                      <span className="text-sm text-gray-300">
+                        Camera: {isVideoEnabled ? 'Ready' : 'Disabled'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          isAudioEnabled ? 'bg-green-500' : 'bg-red-500'
+                        }`}
+                      />
+                      <span className="text-sm text-gray-300">
+                        Microphone: {isAudioEnabled ? 'Ready' : 'Muted'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={viewState === 'joining' || !userName.trim()}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-6"
+                  >
+                    {viewState === 'joining' ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Joining...
+                      </>
+                    ) : (
+                      '➡️ Join Conference'
+                    )}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      stopLocalStream();
+                      navigate('/conference');
+                    }}
+                    className="w-full bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                  >
+                    Cancel
+                  </Button>
+                </form>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -211,39 +380,8 @@ const ConferenceRoom: React.FC = () => {
   // Active conference screen
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
-      {/* Header */}
-      <div className="bg-slate-800 border-b border-slate-700 p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-            {room ? room.name[0].toUpperCase() : 'C'}
-          </div>
-          <div>
-            <h1 className="text-white font-semibold">{room?.name || 'Conference Room'}</h1>
-            <p className="text-sm text-gray-400">{participants.length} participants</p>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowParticipants(!showParticipants)}
-            className="text-gray-300 hover:text-white"
-          >
-            <Users className="w-4 h-4 mr-2" />
-            Participants ({participants.length})
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            className="text-gray-300 hover:text-white"
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            Chat
-          </Button>
-        </div>
-      </div>
+      {/* Header with Share */}
+      <ConferenceHeader room={room} participantCount={participants.length} />
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden gap-4 p-4">

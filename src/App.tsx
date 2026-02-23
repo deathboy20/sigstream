@@ -37,6 +37,7 @@ const App = () => (
           {/* Conference Routes */}
           <Route path="/conference" element={<ConferenceLanding />} />
           <Route path="/conference/:roomId" element={<ConferenceRoom />} />
+          <Route path="/join/conference/:roomId" element={<ConferenceRoom />} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
