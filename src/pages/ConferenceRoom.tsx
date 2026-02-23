@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { api } from '../services/api';
 
-type ViewState = 'joining' | 'waiting' | 'active' | 'error';
+type ViewState = 'loading' | 'ready' | 'joining' | 'active' | 'error';
 
 const ConferenceRoom: React.FC = () => {
   const { roomId } = useParams<{ roomId: string }>();
@@ -34,7 +34,7 @@ const ConferenceRoom: React.FC = () => {
     stopScreenShare
   } = useConference();
 
-  const [viewState, setViewState] = useState<ViewState>('joining');
+  const [viewState, setViewState] = useState<ViewState>('loading');
   const [userName, setUserName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -73,8 +73,8 @@ const ConferenceRoom: React.FC = () => {
           return;
         }
 
-        // Room is valid, show join screen
-        setViewState('joining');
+        // Room is valid, show join screen ready for user interaction
+        setViewState('ready');
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load conference';
         
@@ -222,6 +222,23 @@ const ConferenceRoom: React.FC = () => {
     );
   }
 
+  // Loading screen while validating room
+  if (viewState === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
+        <Card className="bg-slate-800 border-slate-700 w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Loader2 className="h-12 w-12 text-blue-500 mx-auto mb-4 animate-spin" />
+              <h2 className="text-xl font-bold text-white mb-2">Loading Conference</h2>
+              <p className="text-gray-300">Please wait while we set up your conference room...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // Error screen
   if (viewState === 'error') {
     return (
@@ -245,8 +262,8 @@ const ConferenceRoom: React.FC = () => {
     );
   }
 
-  // Join screen
-  if (viewState === 'joining') {
+  // Join screen (ready state and while joining)
+  if (viewState === 'ready' || viewState === 'joining') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-6">
         <div className="w-full max-w-2xl">
