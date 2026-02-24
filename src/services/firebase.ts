@@ -1,4 +1,5 @@
 import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 // We only need the app initialization for now if we use Auth later.
 // Realtime Database is NOT used.
@@ -10,8 +11,9 @@ const firebaseConfig = {
   messagingSenderId: "934572124832",
   appId: "1:934572124832:web:ff543b81acf179155c77c5",
   measurementId: "G-MB0XJ68B98",
-
 };
 
 export const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
 // export const db = getDatabase(app); // DISABLED: Using Socket.IO + In-Memory Backend
