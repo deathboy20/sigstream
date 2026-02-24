@@ -78,5 +78,47 @@ export const api = {
   healthCheck: async () => {
       const response = await fetch(`${API_URL}/health`);
       return response.json();
+  },
+
+  deleteSession: async (id: string) => {
+    const response = await fetch(`${API_URL}/sessions/${id}`, {
+      method: 'DELETE',
+    });
+    return response.json();
+  },
+
+  // --- Meetings API ---
+  createMeeting: async (meetingData: { id: string, hostId: string, hostName: string, title?: string }) => {
+    const response = await fetch(`${API_URL}/meetings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(meetingData),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error creating meeting (${response.status}):`, errorText);
+      throw new Error(`Failed to create meeting: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  getMeeting: async (id: string) => {
+    const response = await fetch(`${API_URL}/meetings/${id}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error getting meeting (${response.status}):`, errorText);
+      throw new Error(`Meeting not found: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  listUserMeetings: async (userId: string) => {
+    const response = await fetch(`${API_URL}/meetings/user/${userId}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error fetching meetings (${response.status}):`, errorText);
+      throw new Error(`Failed to fetch meetings: ${response.status}`);
+    }
+    return response.json();
   }
 };
