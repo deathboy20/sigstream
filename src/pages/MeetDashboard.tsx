@@ -308,6 +308,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
+import { Button } from '../components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 
 /* ─── Live clock ──────────────────────────────────────────── */
 function useClock() {
@@ -342,14 +344,7 @@ const MeetDashboard: React.FC = () => {
   useEffect(() => {
     if (!loading && !user) {
       const timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            navigate('/');
-            return 0;
-          }
-          return prev - 1;
-        });
+        setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
       }, 1000);
 
       toast.info(`Redirecting to home in ${countdown} seconds...`, {
@@ -359,7 +354,14 @@ const MeetDashboard: React.FC = () => {
 
       return () => clearInterval(timer);
     }
-  }, [user, loading, navigate]);
+  }, [user, loading]);
+
+  // Handle actual redirect
+  useEffect(() => {
+    if (!user && countdown === 0) {
+      navigate('/');
+    }
+  }, [countdown, user, navigate]);
 
   // Update toast on countdown change
   useEffect(() => {
@@ -435,6 +437,24 @@ const MeetDashboard: React.FC = () => {
         <div className="space-y-3">
           <h2 className="text-3xl font-bold text-white">Login Required</h2>
           <p className="text-[#4B5563]">Please sign in to your account to access SOKO Meet features.</p>
+          <p className="text-[#3B6EF8] text-sm font-medium">Returning to home in {countdown}s...</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <Button 
+            onClick={loginWithGoogle} 
+            size="lg" 
+            className="w-full h-14 rounded-2xl bg-[#3B6EF8] hover:bg-[#2E56C9] text-white font-bold text-lg shadow-lg shadow-[#3B6EF8]/20"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6 mr-3 bg-white p-0.5 rounded-full" />
+            Sign in with Google
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={() => navigate('/')} 
+            className="w-full h-12 rounded-2xl border-white/10 text-white hover:bg-white/5 transition-colors"
+          >
+            Back to Home
+          </Button>
         </div>
 
       </div>
@@ -488,10 +508,12 @@ const MeetDashboard: React.FC = () => {
               <span className="text-sm font-semibold text-white/90">{user.displayName}</span>
               <span className="text-[11px] text-[#4B5563]">{user.email}</span>
             </div>
-            <div className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-white/10 flex-shrink-0">
-              <img src={user.photoURL || ''} alt={user.displayName || 'User'}
-                className="w-full h-full object-cover" />
-            </div>
+            <Avatar className="w-9 h-9 border border-white/10 ring-2 ring-white/5 flex-shrink-0">
+              <AvatarImage src={user.photoURL || ''} alt={user.displayName || 'User'} className="object-cover" />
+              <AvatarFallback className="bg-[#3B6EF8] text-white text-xs font-bold">
+                {user.displayName?.charAt(0) || 'U'}
+              </AvatarFallback>
+            </Avatar>
             <button onClick={logout}
               className="w-9 h-9 rounded-xl flex items-center justify-center
                 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all duration-150">
