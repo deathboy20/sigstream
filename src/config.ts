@@ -1,2 +1,1 @@
-// export const STREAM_API_URL = 'http://localhost:3001';
-export const STREAM_API_URL = 'https://stream-server-fxu5.onrender.com';
+export const STREAM_API_URL = import.meta.env.VITE_STREAM_API_URL

@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import { Input } from '../components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '../components/ui/dialog';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -27,6 +29,8 @@ import { toast } from 'sonner';
 import { api } from '../services/api';
 import { socket } from '../contexts/StreamContext';
 import SimplePeer from 'simple-peer';
+import QRCode from 'react-qr-code';
+import { Share2 } from 'lucide-react';
 
 interface Participant {
   id: string;
@@ -51,6 +55,13 @@ const MeetRoom: React.FC = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [reactions, setReactions] = useState<any[]>([]);
+  const [guestName, setGuestName] = useState('');
+  const [hasJoined, setHasJoined] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [guestReady, setGuestReady] = useState(false);
+  const [waitingApproval, setWaitingApproval] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState<Array<{ viewerId: string; name: string }>>([]);
+  const [displayStream, setDisplayStream] = useState<MediaStream | null>(null);
   
   const peersRef = useRef<{ [key: string]: SimplePeer.Instance }>({});
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -91,12 +102,12 @@ const MeetRoom: React.FC = () => {
   }, [activeSidebar]);
 
   const sendChatMessage = () => {
-    if (!chatInput.trim() || !user) return;
+    if (!chatInput.trim()) return;
     const msg = {
       sessionId: meetingId!,
       message: chatInput,
-      senderName: user.displayName || 'Anonymous',
-      senderId: user.uid,
+      senderName: (user?.displayName || guestName || 'Anonymous'),
+      senderId: (user?.uid || socket.id),
       timestamp: Date.now()
     };
     socket.emit('chat-message', msg);
@@ -104,12 +115,11 @@ const MeetRoom: React.FC = () => {
   };
 
   const sendReaction = (emoji: string) => {
-    if (!user) return;
     socket.emit('reaction', {
       sessionId: meetingId!,
       reaction: emoji,
-      senderName: user.displayName || 'Anonymous',
-      senderId: user.uid
+      senderName: (user?.displayName || guestName || 'Anonymous'),
+      senderId: (user?.uid || socket.id)
     });
     
     // Show local reaction too
@@ -144,38 +154,67 @@ const MeetRoom: React.FC = () => {
     fetchMeeting();
   }, [meetingId, user]);
 
-  // Initialize local stream
   useEffect(() => {
-    if (!user) {
-      navigate('/meet');
-      return;
-    }
-
+    const canJoin = !!meetingId && !hasJoined && (!!user || guestReady);
+    if (!canJoin) return;
     const init = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setLocalStream(stream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
+        if (user) {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          setLocalStream(stream);
+          if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+          socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
+          socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id });
+          setHasJoined(true);
+        } else {
+          socket.emit('join-request', { sessionId: meetingId!, viewerId: socket.id, name: guestName });
+          setWaitingApproval(true);
         }
-
-        // Join the meeting room with userId for host verification
-        socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
-        socket.emit('viewer-connected', { sessionId: meetingId, viewerId: socket.id });
-
       } catch (err) {
-        console.error("Failed to get local stream", err);
         toast.error("Could not access camera/microphone");
       }
     };
-
     init();
+  }, [meetingId, user, guestReady, hasJoined]);
 
+  useEffect(() => {
+    socket.on('pending-join', (data: { viewerId: string; name: string }) => {
+      setPendingRequests(prev => {
+        if (prev.find(p => p.viewerId === data.viewerId)) return prev;
+        return [...prev, data];
+      });
+    });
+    socket.on('join-approved', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setLocalStream(stream);
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+        socket.emit('join-session', meetingId!);
+        setHasJoined(true);
+        setWaitingApproval(false);
+      } catch {
+        toast.error('Could not access camera/microphone');
+      }
+    });
+    socket.on('join-rejected', () => {
+      setWaitingApproval(false);
+      toast.error('Join request rejected');
+    });
     return () => {
-      localStream?.getTracks().forEach(track => track.stop());
-      Object.values(peersRef.current).forEach(peer => peer.destroy());
+      socket.off('pending-join');
+      socket.off('join-approved');
+      socket.off('join-rejected');
     };
-  }, [meetingId, user]);
+  }, [meetingId]);
+
+  // If the user signs in after joining as guest, mark role and update host state
+  useEffect(() => {
+    if (!meetingId || !user || !hasJoined) return;
+    socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
+    if (meetingData && meetingData.hostId === user.uid) {
+      setIsHost(true);
+    }
+  }, [user, meetingId, hasJoined, meetingData]);
 
   // Handle peer commands (from host)
   useEffect(() => {
@@ -307,6 +346,44 @@ const MeetRoom: React.FC = () => {
 
   return (
     <div className="h-screen bg-[#202124] flex flex-col text-white overflow-hidden font-sans">
+      <header className="h-16 px-6 border-b border-zinc-800/50 flex items-center justify-between sticky top-0 bg-[#202124]/80 backdrop-blur-md z-50">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+          <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-8 w-auto" />
+          <span className="text-xl font-semibold">Soko Meet</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className={`rounded-full ${activeSidebar === 'chat' ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`} onClick={() => setActiveSidebar(activeSidebar === 'chat' ? 'none' : 'chat')}>
+            <MessageSquare className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" className={`rounded-full ${activeSidebar === 'participants' ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`} onClick={() => setActiveSidebar(activeSidebar === 'participants' ? 'none' : 'participants')}>
+            <Users className="h-5 w-5" />
+          </Button>
+          <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full hover:bg-white/10">
+                <Share2 className="h-5 w-5" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-[#202124] border-zinc-800 text-white">
+              <DialogHeader>
+                <DialogTitle>Share this meeting</DialogTitle>
+                <DialogDescription className="text-zinc-400">
+                  {(meetingData?.hostName || 'Host')} is inviting you to join a meeting.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 bg-zinc-900 p-2 rounded-lg border border-zinc-700">
+                  <span className="text-xs text-zinc-400 truncate flex-1">{window.location.href}</span>
+                  <Button variant="ghost" size="sm" className="h-8 px-2 text-primary" onClick={copyMeetingLink}>Copy</Button>
+                </div>
+                <div className="flex items-center justify-center p-4 rounded-xl bg-zinc-900 border border-zinc-700">
+                  <QRCode value={window.location.href} size={128} fgColor="#ffffff" bgColor="transparent" />
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </header>
       {/* Main Grid Area */}
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 p-4 flex items-center justify-center relative overflow-hidden">
@@ -340,12 +417,12 @@ const MeetRoom: React.FC = () => {
               {isVideoOff && (
                 <div className="absolute inset-0 flex items-center justify-center bg-zinc-800">
                   <div className="w-24 h-24 rounded-full bg-[#3B6EF8] flex items-center justify-center text-3xl font-bold shadow-xl">
-                    {user?.displayName?.charAt(0)}
+                    {(user?.displayName?.charAt(0) || guestName?.charAt(0) || 'U')}
                   </div>
                 </div>
               )}
               <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 border border-white/10">
-                {user?.displayName} (You)
+                {(user?.displayName || guestName || 'You')} (You)
                 {isMuted && <MicOff className="h-3.5 w-3.5 text-destructive" />}
               </div>
             </div>
@@ -378,7 +455,7 @@ const MeetRoom: React.FC = () => {
                       </div>
                     ) : (
                       messages.map((m, i) => (
-                        <div key={i} className={`flex flex-col ${m.senderId === user?.uid ? 'items-end' : 'items-start'}`}>
+                        <div key={i} className={`flex flex-col ${m.senderId === (user?.uid || socket.id) ? 'items-end' : 'items-start'}`}>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs font-bold text-zinc-400">{m.senderName}</span>
                             <span className="text-[10px] text-zinc-600">{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -404,18 +481,45 @@ const MeetRoom: React.FC = () => {
                     <div className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
                       <div className="flex items-center gap-3">
                         <Avatar className="w-8 h-8 flex-shrink-0">
-                          <AvatarImage src={user?.photoURL || ''} alt={user?.displayName || 'User'} />
+                          <AvatarImage src={user?.photoURL || ''} alt={(user?.displayName || guestName || 'User')} />
                           <AvatarFallback className="bg-[#3B6EF8] text-white text-[10px] font-bold">
-                            {user?.displayName?.charAt(0) || 'U'}
+                            {(user?.displayName?.charAt(0) || guestName?.charAt(0) || 'U')}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="text-sm font-medium">{user?.displayName} (You)</span>
+                        <span className="text-sm font-medium">{(user?.displayName || guestName || 'You')} (You)</span>
                       </div>
                       <div className="flex gap-1">
                         {isMuted && <MicOff className="h-4 w-4 text-destructive" />}
                         {isHost && <ShieldCheck className="h-4 w-4 text-primary" />}
                       </div>
                     </div>
+                    {isHost && pendingRequests.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs text-zinc-400 px-2">Pending requests</div>
+                        {pendingRequests.map(req => (
+                          <div key={req.viewerId} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="w-8 h-8 flex-shrink-0">
+                                <AvatarFallback className="bg-zinc-700 text-white text-[10px] font-bold">
+                                  {req.name.charAt(0)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm font-medium">{req.name}</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button variant="secondary" size="sm" onClick={() => {
+                                socket.emit('approve-join', { sessionId: meetingId!, viewerId: req.viewerId });
+                                setPendingRequests(prev => prev.filter(p => p.viewerId !== req.viewerId));
+                              }}>Approve</Button>
+                              <Button variant="destructive" size="sm" onClick={() => {
+                                socket.emit('reject-join', { sessionId: meetingId!, viewerId: req.viewerId });
+                                setPendingRequests(prev => prev.filter(p => p.viewerId !== req.viewerId));
+                              }}>Reject</Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {/* Remote Users */}
                     {participants.map(p => (
                       <div key={p.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors group">
@@ -527,7 +631,47 @@ const MeetRoom: React.FC = () => {
               variant="ghost"
               size="icon"
               className={`h-12 w-12 rounded-full transition-all ${isScreenSharing ? 'bg-primary text-white hover:bg-primary/80' : 'bg-zinc-700 hover:bg-zinc-600 border border-white/10'}`}
-              onClick={() => setIsScreenSharing(!isScreenSharing)}
+              onClick={async () => {
+                try {
+                  if (!isScreenSharing) {
+                    const ds = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                    const newTrack = ds.getVideoTracks()[0];
+                    const oldTrack = localStream?.getVideoTracks()[0] || null;
+                    Object.values(peersRef.current).forEach(peer => {
+                      if (oldTrack) peer.replaceTrack(oldTrack, newTrack, localStream!);
+                    });
+                    setDisplayStream(ds);
+                    if (localVideoRef.current) localVideoRef.current.srcObject = ds;
+                    setIsScreenSharing(true);
+                    newTrack.onended = async () => {
+                      const cam = await navigator.mediaDevices.getUserMedia({ video: true });
+                      const camTrack = cam.getVideoTracks()[0];
+                      Object.values(peersRef.current).forEach(peer => {
+                        peer.replaceTrack(newTrack, camTrack, localStream!);
+                      });
+                      if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+                      setIsScreenSharing(false);
+                      ds.getTracks().forEach(t => t.stop());
+                      setDisplayStream(null);
+                    };
+                  } else {
+                    if (displayStream) {
+                      const screenTrack = displayStream.getVideoTracks()[0];
+                      const cam = await navigator.mediaDevices.getUserMedia({ video: true });
+                      const camTrack = cam.getVideoTracks()[0];
+                      Object.values(peersRef.current).forEach(peer => {
+                        peer.replaceTrack(screenTrack, camTrack, localStream!);
+                      });
+                      if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+                      setIsScreenSharing(false);
+                      displayStream.getTracks().forEach(t => t.stop());
+                      setDisplayStream(null);
+                    }
+                  }
+                } catch {
+                  toast.error('Screen share failed');
+                }
+              }}
             >
               <MonitorUp className="h-5 w-5" />
             </Button>
@@ -561,23 +705,50 @@ const MeetRoom: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 w-1/4 justify-end">
-          <Button variant="ghost" size="icon" className={`h-12 w-12 rounded-full transition-colors ${activeSidebar === 'info' ? 'text-primary bg-primary/10' : 'text-white hover:bg-white/10'}`} onClick={() => setActiveSidebar(activeSidebar === 'info' ? 'none' : 'info')}>
-            <Info className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="icon" className={`h-12 w-12 rounded-full transition-colors ${activeSidebar === 'participants' ? 'text-primary bg-primary/10' : 'text-white hover:bg-white/10'}`} onClick={() => setActiveSidebar(activeSidebar === 'participants' ? 'none' : 'participants')}>
-            <Users className="h-5 w-5" />
-          </Button>
-          <div className="relative">
-            <Button variant="ghost" size="icon" className={`h-12 w-12 rounded-full transition-colors ${activeSidebar === 'chat' ? 'text-primary bg-primary/10' : 'text-white hover:bg-white/10'}`} onClick={() => setActiveSidebar(activeSidebar === 'chat' ? 'none' : 'chat')}>
-              <MessageSquare className="h-5 w-5" />
-            </Button>
-            {messages.length > 0 && activeSidebar !== 'chat' && (
-              <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full ring-2 ring-[#202124]" />
-            )}
+        <div className="flex items-center gap-1 w-1/4 justify-end"></div>
+      </div>
+
+      
+      {!user && !guestReady && !hasJoined && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-md bg-[#202124] border border-zinc-800 rounded-2xl p-6 text-white">
+            <h3 className="text-lg font-semibold mb-2">Join as Guest</h3>
+            <p className="text-sm text-zinc-400 mb-4">Enter your name to join this meeting.</p>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Your name"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (!guestName.trim()) {
+                      toast.error('Please enter your name');
+                      return;
+                    }
+                    setGuestName(guestName.trim());
+                    setGuestReady(true);
+                  }
+                }}
+                className="flex-1"
+              />
+              <Button
+                onClick={() => {
+                  if (!guestName.trim()) {
+                    toast.error('Please enter your name');
+                    return;
+                  }
+                  setGuestName(guestName.trim());
+                  setGuestReady(true);
+                }}
+                className="px-6"
+              >
+                {waitingApproval ? 'Waiting...' : 'Join'}
+              </Button>
+            </div>
+            <p className="text-xs text-zinc-500 mt-3">Or sign in to join with your account.</p>
           </div>
         </div>
-      </div>
+      )}
 
       <style>{`
         @keyframes float-up {
