@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
@@ -39,6 +39,33 @@ interface Participant {
   isLocal?: boolean;
 }
 
+interface MeetingData {
+  id: string;
+  hostId: string;
+  hostName: string;
+  title?: string;
+}
+
+interface ChatMessage {
+  sessionId: string;
+  message: string;
+  senderName: string;
+  senderId: string;
+  timestamp: number;
+}
+
+interface ReactionData {
+  sessionId: string;
+  reaction: string;
+  senderName: string;
+  senderId: string;
+}
+
+interface PendingJoin {
+  viewerId: string;
+  name: string;
+}
+
 const MeetRoom: React.FC = () => {
   const { meetingId } = useParams<{ meetingId: string }>();
   const { user } = useAuth();
@@ -50,17 +77,17 @@ const MeetRoom: React.FC = () => {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isHost, setIsHost] = useState(false);
-  const [meetingData, setMeetingData] = useState<any>(null);
+  const [meetingData, setMeetingData] = useState<MeetingData | null>(null);
   const [activeSidebar, setActiveSidebar] = useState<'none' | 'chat' | 'participants' | 'info'>('none');
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
-  const [reactions, setReactions] = useState<any[]>([]);
+  const [reactions, setReactions] = useState<Array<ReactionData & { id: string }>>([]);
   const [guestName, setGuestName] = useState('');
   const [hasJoined, setHasJoined] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [guestReady, setGuestReady] = useState(false);
   const [waitingApproval, setWaitingApproval] = useState(false);
-  const [pendingRequests, setPendingRequests] = useState<Array<{ viewerId: string; name: string }>>([]);
+  const [pendingRequests, setPendingRequests] = useState<PendingJoin[]>([]);
   const [displayStream, setDisplayStream] = useState<MediaStream | null>(null);
   
   const peersRef = useRef<{ [key: string]: SimplePeer.Instance }>({});
@@ -74,7 +101,7 @@ const MeetRoom: React.FC = () => {
 
   // Listen for chat and reactions
   useEffect(() => {
-    socket.on('chat-message', (msg: any) => {
+    socket.on('chat-message', (msg: ChatMessage) => {
       setMessages((prev) => [...prev, msg]);
       if (activeSidebar !== 'chat') {
         toast.info(`New message from ${msg.senderName}`, {
@@ -87,7 +114,7 @@ const MeetRoom: React.FC = () => {
       }
     });
 
-    socket.on('reaction', (data: any) => {
+    socket.on('reaction', (data: ReactionData) => {
       const id = Math.random().toString(36).substring(7);
       setReactions((prev) => [...prev, { ...data, id }]);
       setTimeout(() => {
@@ -124,7 +151,16 @@ const MeetRoom: React.FC = () => {
     
     // Show local reaction too
     const id = Math.random().toString(36).substring(7);
-    setReactions((prev) => [...prev, { reaction: emoji, senderName: 'You', id }]);
+    setReactions((prev) => [
+      ...prev, 
+      { 
+        sessionId: meetingId!, 
+        reaction: emoji, 
+        senderName: 'You', 
+        senderId: (user?.uid || socket.id), 
+        id 
+      }
+    ]);
     setTimeout(() => {
       setReactions((prev) => prev.filter(r => r.id !== id));
     }, 3000);
@@ -164,7 +200,7 @@ const MeetRoom: React.FC = () => {
           setLocalStream(stream);
           if (localVideoRef.current) localVideoRef.current.srcObject = stream;
           socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
-          socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id });
+          socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id, name: user.displayName || 'Anonymous' });
           setHasJoined(true);
         } else {
           socket.emit('join-request', { sessionId: meetingId!, viewerId: socket.id, name: guestName });
@@ -178,7 +214,21 @@ const MeetRoom: React.FC = () => {
   }, [meetingId, user, guestReady, hasJoined]);
 
   useEffect(() => {
-    socket.on('pending-join', (data: { viewerId: string; name: string }) => {
+    socket.on('pending-join', (data: PendingJoin) => {
+      if (isHost) {
+        try {
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine'; o.frequency.value = 880;
+          o.connect(g); g.connect(ctx.destination);
+          g.gain.setValueAtTime(0.0001, ctx.currentTime);
+          g.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.05);
+          g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+          o.start(); o.stop(ctx.currentTime + 0.4);
+        } catch {}
+        toast.info(`${data.name} is requesting to join`, { duration: 3000 });
+      }
       setPendingRequests(prev => {
         if (prev.find(p => p.viewerId === data.viewerId)) return prev;
         return [...prev, data];
@@ -200,12 +250,30 @@ const MeetRoom: React.FC = () => {
       setWaitingApproval(false);
       toast.error('Join request rejected');
     });
+    socket.on('viewer-left', ({ viewerId }: { viewerId: string }) => {
+      const peer = peersRef.current[viewerId];
+      if (peer) {
+        peer.destroy();
+        delete peersRef.current[viewerId];
+      }
+      setParticipants(prev => prev.filter(p => p.id !== viewerId));
+    });
+    socket.on('meeting-ended', () => {
+      toast.error('Meeting has ended');
+      navigate('/meet');
+    });
+    socket.on('host-left', () => {
+      toast.warning('Host has left the meeting');
+    });
     return () => {
       socket.off('pending-join');
       socket.off('join-approved');
       socket.off('join-rejected');
+      socket.off('viewer-left');
+      socket.off('meeting-ended');
+      socket.off('host-left');
     };
-  }, [meetingId]);
+  }, [meetingId, isHost, navigate, peersRef]);
 
   // If the user signs in after joining as guest, mark role and update host state
   useEffect(() => {
@@ -259,7 +327,7 @@ const MeetRoom: React.FC = () => {
   useEffect(() => {
     if (!localStream) return;
 
-    socket.on('viewer-connected', ({ viewerId }) => {
+    socket.on('viewer-connected', ({ viewerId, name }: { viewerId: string; name?: string }) => {
       if (viewerId === socket.id) return;
       console.log("New participant joined:", viewerId);
       
@@ -276,7 +344,7 @@ const MeetRoom: React.FC = () => {
       peer.on('stream', stream => {
         setParticipants(prev => {
           if (prev.find(p => p.id === viewerId)) return prev;
-          return [...prev, { id: viewerId, stream, name: 'Guest' }];
+          return [...prev, { id: viewerId, stream, name: name || 'Guest' }];
         });
       });
 
@@ -331,6 +399,11 @@ const MeetRoom: React.FC = () => {
 
   const handleLeave = () => {
     localStream?.getTracks().forEach(track => track.stop());
+    if (isHost) {
+      socket.emit('host-leaving', { sessionId: meetingId });
+    } else {
+      socket.emit('viewer-left', { sessionId: meetingId, viewerId: socket.id });
+    }
     navigate('/meet');
   };
 
@@ -346,7 +419,7 @@ const MeetRoom: React.FC = () => {
 
   return (
     <div className="h-screen bg-[#202124] flex flex-col text-white overflow-hidden font-sans">
-      <header className="h-16 px-6 border-b border-zinc-800/50 flex items-center justify-between sticky top-0 bg-[#202124]/80 backdrop-blur-md z-50">
+      <header className="h-12 px-4 border-b border-zinc-800/50 flex items-center justify-between sticky top-0 bg-[#202124]/80 backdrop-blur-md z-50">
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
           <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-8 w-auto" />
           <span className="text-xl font-semibold">Soko Meet</span>
@@ -404,7 +477,7 @@ const MeetRoom: React.FC = () => {
             ))}
           </div>
 
-          <div className={`grid gap-4 w-full max-w-7xl mx-auto transition-all duration-500 ${getGridClass()}`}>
+          <div className={`grid gap-4 w-full max-w-7xl mx-auto transition-all duration-500 pt-2 ${getGridClass()}`}>
             {/* Local Video */}
             <div className="relative aspect-video bg-zinc-800 rounded-xl overflow-hidden group border-2 border-transparent hover:border-primary/50 transition-all shadow-lg">
               <video
@@ -422,7 +495,7 @@ const MeetRoom: React.FC = () => {
                 </div>
               )}
               <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 border border-white/10">
-                {(user?.displayName || guestName || 'You')} (You)
+                {(user?.displayName || guestName || 'You')} {isHost ? '(Host)' : '(You)'}
                 {isMuted && <MicOff className="h-3.5 w-3.5 text-destructive" />}
               </div>
             </div>
@@ -487,6 +560,7 @@ const MeetRoom: React.FC = () => {
                           </AvatarFallback>
                         </Avatar>
                         <span className="text-sm font-medium">{(user?.displayName || guestName || 'You')} (You)</span>
+                        {isHost && <span className="ml-1 text-xs text-primary font-bold">(Host)</span>}
                       </div>
                       <div className="flex gap-1">
                         {isMuted && <MicOff className="h-4 w-4 text-destructive" />}
@@ -796,6 +870,12 @@ const HostGlobalControls: React.FC<{ sessionId: string }> = ({ sessionId }) => {
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleAction('open-video-all')} className="hover:bg-zinc-800 cursor-pointer">
           <Video className="mr-2 h-4 w-4" /> Open All Videos
+        </DropdownMenuItem>
+        <DropdownMenuSeparator className="bg-zinc-800" />
+        <DropdownMenuItem onClick={() => {
+          socket.emit('end-meeting', { sessionId });
+        }} className="hover:bg-red-900/40 cursor-pointer text-red-400">
+          <PhoneOff className="mr-2 h-4 w-4" /> End Meeting For All
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
