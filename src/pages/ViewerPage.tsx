@@ -145,11 +145,20 @@ const ViewerPage: React.FC = () => {
     }
 
     socket.on('connect', joinRooms);
+    
+    const handleDisconnect = () => {
+        console.warn('Socket disconnected');
+        if (viewerState === 'watching') {
+            toast.error('Connection lost. Reconnecting...');
+        }
+    };
+    socket.on('disconnect', handleDisconnect);
 
     return () => {
         socket.off('connect', joinRooms);
+        socket.off('disconnect', handleDisconnect);
     };
-  }, [viewer, sessionId]);
+  }, [viewer, sessionId, viewerState]);
 
   // Polling for Approval
   useEffect(() => {
@@ -185,6 +194,12 @@ const ViewerPage: React.FC = () => {
         console.log('Viewer entering watching state, emitting ready...');
         // Emit 'viewer-ready' to Host to trigger Offer
         socket.emit('viewer-ready', { sessionId, viewerId: viewer.id });
+        
+        const onConnectTriggerReady = () => {
+            console.log('Reconnected, requesting webrtc renegotiation...');
+            socket.emit('viewer-ready', { sessionId, viewerId: viewer.id });
+        };
+        socket.on('connect', onConnectTriggerReady);
 
         // Wait for Offer from Host
         const handleSignal = (data: { signal: any; sender: string; metadata?: any }) => {
@@ -252,6 +267,7 @@ const ViewerPage: React.FC = () => {
 
         return () => {
             socket.off('signal', handleSignal);
+            socket.off('connect', onConnectTriggerReady);
             if (peerRef.current) {
                 peerRef.current.destroy();
                 peerRef.current = null;

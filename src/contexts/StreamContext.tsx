@@ -69,6 +69,21 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       initiator: true,
       trickle: true,
       stream: streamRef.current || undefined,
+      sdpTransform: (sdp: string) => {
+        // Limit upload video bitrate to ~1000 kbps to save resources on mesh
+        const lines = sdp.split('\r\n');
+        const newLines: string[] = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          newLines.push(line);
+          
+          if (line.startsWith('m=video')) {
+            newLines.push('b=AS:1000');
+          }
+        }
+        return newLines.join('\r\n');
+      }
     });
 
     peersRef.current[viewer.id] = peer;
