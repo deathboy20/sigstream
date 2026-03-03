@@ -28,6 +28,7 @@ import {
 import { toast } from 'sonner';
 import { api } from '../services/api';
 import { socket } from '../contexts/StreamContext';
+import { useIsMobile } from '../hooks/use-mobile';
 import SimplePeer from 'simple-peer';
 import QRCode from 'react-qr-code';
 import { Share2 } from 'lucide-react';
@@ -66,10 +67,14 @@ interface PendingJoin {
   name: string;
 }
 
+// Screen share is supported on desktop; on mobile only Android Chrome typically supports getDisplayMedia
+const canScreenShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
+
 const MeetRoom: React.FC = () => {
   const { meetingId } = useParams<{ meetingId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -89,10 +94,18 @@ const MeetRoom: React.FC = () => {
   const [waitingApproval, setWaitingApproval] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<PendingJoin[]>([]);
   const [displayStream, setDisplayStream] = useState<MediaStream | null>(null);
-  
+  const [isRecording, setIsRecording] = useState(false);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [raisedHands, setRaisedHands] = useState<string[]>([]);
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const [networkQuality, setNetworkQuality] = useState<'good' | 'fair' | 'poor' | 'unknown'>('unknown');
+  const [hasAdaptedQuality, setHasAdaptedQuality] = useState(false);
+
   const peersRef = useRef<{ [key: string]: SimplePeer.Instance }>({});
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -284,29 +297,41 @@ const MeetRoom: React.FC = () => {
     }
   }, [user, meetingId, hasJoined, meetingData]);
 
-  // Handle peer commands (from host)
+  // Handle peer commands (from host) — use direct track updates so mute-all works reliably
   useEffect(() => {
     socket.on('peer-command', (data: { command: string, value?: any }) => {
       console.log("Received peer command:", data);
       switch (data.command) {
         case 'mute':
         case 'mute-all':
-          if (!isMuted) toggleMute();
+          if (localStream) {
+            localStream.getAudioTracks().forEach(track => { track.enabled = false; });
+            setIsMuted(true);
+          }
           toast.info("Host has muted you");
           break;
         case 'unmute':
         case 'unmute-all':
-          if (isMuted) toggleMute();
+          if (localStream) {
+            localStream.getAudioTracks().forEach(track => { track.enabled = true; });
+            setIsMuted(false);
+          }
           toast.info("Host has unmuted you");
           break;
         case 'close-video':
         case 'close-video-all':
-          if (!isVideoOff) toggleVideo();
+          if (localStream) {
+            localStream.getVideoTracks().forEach(track => { track.enabled = false; });
+            setIsVideoOff(true);
+          }
           toast.info("Host has closed your video");
           break;
         case 'open-video':
         case 'open-video-all':
-          if (isVideoOff) toggleVideo();
+          if (localStream) {
+            localStream.getVideoTracks().forEach(track => { track.enabled = true; });
+            setIsVideoOff(false);
+          }
           toast.info("Host has opened your video");
           break;
         case 'remove':
@@ -321,7 +346,119 @@ const MeetRoom: React.FC = () => {
     return () => {
       socket.off('peer-command');
     };
-  }, [isMuted, isVideoOff]);
+  }, [localStream]);
+
+  // Network quality via Network Information API (fallback to unknown)
+  useEffect(() => {
+    const navAny = navigator as any;
+    const conn = navAny?.connection || navAny?.mozConnection || navAny?.webkitConnection;
+    if (!conn) return;
+
+    const update = () => {
+      const type = conn.effectiveType as string | undefined;
+      if (!type) {
+        setNetworkQuality('unknown');
+        return;
+      }
+      if (type === '4g') setNetworkQuality('good');
+      else if (type === '3g') setNetworkQuality('fair');
+      else setNetworkQuality('poor');
+    };
+
+    conn.addEventListener('change', update);
+    update();
+    return () => conn.removeEventListener('change', update);
+  }, []);
+
+  // Simple quality adaptation: when network is poor, lower video resolution once
+  useEffect(() => {
+    if (networkQuality !== 'poor' || !localStream || hasAdaptedQuality) return;
+
+    (async () => {
+      try {
+        const currentVideo = localStream.getVideoTracks()[0];
+        if (!currentVideo) return;
+        const lowStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 360 } });
+        const lowTrack = lowStream.getVideoTracks()[0];
+        if (!lowTrack) return;
+
+        localStream.removeTrack(currentVideo);
+        localStream.addTrack(lowTrack);
+
+        Object.values(peersRef.current).forEach(peer => {
+          // @ts-ignore SimplePeer typings
+          peer.replaceTrack(currentVideo, lowTrack, localStream);
+        });
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = localStream;
+        }
+
+        setHasAdaptedQuality(true);
+        toast.info('Network is poor – switched to lower video quality');
+      } catch (e) {
+        console.error('Failed to adapt video quality', e);
+      }
+    })();
+  }, [networkQuality, localStream, hasAdaptedQuality]);
+
+  // Raised hands, pin/spotlight, host transfer, and reconnect handling
+  useEffect(() => {
+    const onHandUpdated = (data: { viewerId: string; raised: boolean }) => {
+      setRaisedHands(prev => {
+        if (data.raised) {
+          if (prev.includes(data.viewerId)) return prev;
+          return [...prev, data.viewerId];
+        }
+        return prev.filter(id => id !== data.viewerId);
+      });
+    };
+
+    const onPinnedUpdated = (data: { targetId: string | null }) => {
+      setPinnedId(data.targetId || null);
+    };
+
+    const onHostTransferred = (data: { sessionId: string; newHostUserId: string; newHostName?: string; targetSocketId: string }) => {
+      setMeetingData(prev => prev ? { ...prev, hostId: data.newHostUserId, hostName: data.newHostName || prev.hostName } : prev);
+      if (user?.uid) {
+        setIsHost(data.newHostUserId === user.uid);
+      }
+      toast.info(`Host role moved to ${data.newHostName || 'another participant'}`);
+    };
+
+    const onHostTransferError = (data: { reason?: string }) => {
+      toast.error(data?.reason || 'Failed to transfer host');
+    };
+
+    const onDisconnect = () => {
+      if (meetingId && (user || guestReady)) {
+        toast.warning('Connection lost. Attempting to rejoin…');
+        setHasJoined(false);
+      }
+    };
+
+    const onConnect = () => {
+      if (meetingId && (user || guestReady)) {
+        toast.success('Reconnected to meeting');
+      }
+    };
+
+    socket.on('hand-updated', onHandUpdated);
+    socket.on('pinned-updated', onPinnedUpdated);
+    socket.on('host-transferred', onHostTransferred);
+    socket.on('host-transfer-error', onHostTransferError);
+    socket.on('disconnect', onDisconnect);
+    socket.on('connect', onConnect);
+
+    return () => {
+      socket.off('hand-updated', onHandUpdated);
+      socket.off('pinned-updated', onPinnedUpdated);
+      socket.off('host-transferred', onHostTransferred);
+      socket.off('host-transfer-error', onHostTransferError);
+      socket.off('disconnect', onDisconnect);
+      socket.off('connect', onConnect);
+    };
+  }, [meetingId, user, guestReady]);
 
   // Handle incoming connections (Signaling)
   useEffect(() => {
@@ -398,6 +535,9 @@ const MeetRoom: React.FC = () => {
   };
 
   const handleLeave = () => {
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
+      recorderRef.current.stop();
+    }
     localStream?.getTracks().forEach(track => track.stop());
     if (isHost) {
       socket.emit('host-leaving', { sessionId: meetingId });
@@ -405,6 +545,67 @@ const MeetRoom: React.FC = () => {
       socket.emit('viewer-left', { sessionId: meetingId, viewerId: socket.id });
     }
     navigate('/meet');
+  };
+
+  const startRecording = () => {
+    const sourceStream = (isScreenSharing && displayStream) || localStream;
+    if (!sourceStream) {
+      toast.error('No media stream available to record');
+      return;
+    }
+    // @ts-ignore
+    if (typeof MediaRecorder === 'undefined') {
+      toast.error('Recording is not supported in this browser');
+      return;
+    }
+    try {
+      const recorder = new MediaRecorder(sourceStream);
+      recordedChunksRef.current = [];
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `soko-meet-recording-${new Date().toISOString()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setIsRecording(false);
+        toast.success('Recording saved to your device');
+      };
+      recorder.start(1000);
+      recorderRef.current = recorder;
+      setIsRecording(true);
+      toast.info('Recording started (saved locally)');
+    } catch (e) {
+      console.error('Failed to start recording', e);
+      toast.error('Failed to start recording');
+    }
+  };
+
+  const stopRecording = () => {
+    if (recorderRef.current && recorderRef.current.state === 'recording') {
+      recorderRef.current.stop();
+    }
+  };
+
+  const toggleHand = () => {
+    const next = !isHandRaised;
+    setIsHandRaised(next);
+    socket.emit('hand-raised', { sessionId: meetingId, raised: next });
+  };
+
+  const handleTogglePin = (targetId: string) => {
+    if (!isHost) return;
+    const nextId = pinnedId === targetId ? null : targetId;
+    setPinnedId(nextId);
+    socket.emit('pin-participant', { sessionId: meetingId, targetId: nextId });
   };
 
   // Determine grid columns based on participant count
@@ -415,6 +616,22 @@ const MeetRoom: React.FC = () => {
     if (total <= 4) return 'grid-cols-2';
     if (total <= 6) return 'grid-cols-2 md:grid-cols-3';
     return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+  };
+
+  const pinnedParticipant = pinnedId ? participants.find(p => p.id === pinnedId) : undefined;
+  const otherParticipants = pinnedId ? participants.filter(p => p.id !== pinnedId) : participants;
+
+  const renderNetworkLabel = () => {
+    switch (networkQuality) {
+      case 'good':
+        return <span className="text-emerald-400 text-xs font-medium">Network: Good</span>;
+      case 'fair':
+        return <span className="text-amber-400 text-xs font-medium">Network: Fair</span>;
+      case 'poor':
+        return <span className="text-red-400 text-xs font-medium">Network: Poor</span>;
+      default:
+        return <span className="text-zinc-500 text-xs font-medium">Network: Unknown</span>;
+    }
   };
 
   return (
@@ -500,9 +717,28 @@ const MeetRoom: React.FC = () => {
               </div>
             </div>
 
-            {/* Remote Participants */}
-            {participants.map(p => (
-              <ParticipantVideo key={p.id} participant={p} isHost={isHost} sessionId={meetingId!} />
+            {/* Remote Participants (pinned first if any) */}
+            {pinnedParticipant && (
+              <ParticipantVideo
+                key={pinnedParticipant.id}
+                participant={pinnedParticipant}
+                isHost={isHost}
+                sessionId={meetingId!}
+                isPinned
+                isRaised={raisedHands.includes(pinnedParticipant.id)}
+                onPinToggle={handleTogglePin}
+              />
+            )}
+            {otherParticipants.map(p => (
+              <ParticipantVideo
+                key={p.id}
+                participant={p}
+                isHost={isHost}
+                sessionId={meetingId!}
+                isPinned={p.id === pinnedId}
+                isRaised={raisedHands.includes(p.id)}
+                onPinToggle={handleTogglePin}
+              />
             ))}
           </div>
         </div>
@@ -564,12 +800,28 @@ const MeetRoom: React.FC = () => {
                       </div>
                       <div className="flex gap-1">
                         {isMuted && <MicOff className="h-4 w-4 text-destructive" />}
+                        {isHandRaised && <span className="text-xs" title="Your hand is raised">✋</span>}
                         {isHost && <ShieldCheck className="h-4 w-4 text-primary" />}
                       </div>
                     </div>
                     {isHost && pendingRequests.length > 0 && (
                       <div className="space-y-2">
-                        <div className="text-xs text-zinc-400 px-2">Pending requests</div>
+                        <div className="flex items-center justify-between px-2">
+                          <span className="text-xs text-zinc-400">Pending requests</span>
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="h-6 text-[10px] px-2 py-0 rounded-full border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500"
+                            onClick={() => {
+                              pendingRequests.forEach(req => {
+                                socket.emit('approve-join', { sessionId: meetingId!, viewerId: req.viewerId });
+                              });
+                              setPendingRequests([]);
+                            }}
+                          >
+                            Admit all
+                          </Button>
+                        </div>
                         {pendingRequests.map(req => (
                           <div key={req.viewerId} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
                             <div className="flex items-center gap-3">
@@ -603,15 +855,40 @@ const MeetRoom: React.FC = () => {
                               {p.name.charAt(0)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="text-sm font-medium">{p.name}</span>
+                          <span className="text-sm font-medium flex items-center gap-1">
+                            {p.name}
+                            {raisedHands.includes(p.id) && <span className="text-[10px]" title="Hand raised">✋</span>}
+                            {pinnedId === p.id && <span className="text-[10px] text-amber-400 font-semibold">Pinned</span>}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2">
                           {isHost && (
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full hover:bg-white/10" onClick={() => socket.emit('targeted-command', { sessionId: meetingId, targetId: p.id, command: 'mute' })}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 rounded-full hover:bg-white/10"
+                                onClick={() => socket.emit('targeted-command', { sessionId: meetingId, targetId: p.id, command: 'mute' })}
+                                title="Mute"
+                              >
                                 <MicOff className="h-3.5 w-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full hover:bg-destructive/20 text-destructive" onClick={() => socket.emit('targeted-command', { sessionId: meetingId, targetId: p.id, command: 'remove' })}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-max rounded-full px-2 text-[10px] font-semibold hover:bg-primary/20 text-primary"
+                                onClick={() => socket.emit('transfer-host', { sessionId: meetingId, targetId: p.id })}
+                                title="Make this participant the new host"
+                              >
+                                Make host
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 rounded-full hover:bg-destructive/20 text-destructive"
+                                onClick={() => socket.emit('targeted-command', { sessionId: meetingId, targetId: p.id, command: 'remove' })}
+                                title="Remove from meeting"
+                              >
                                 <PhoneOff className="h-3.5 w-3.5" />
                               </Button>
                             </div>
@@ -676,13 +953,15 @@ const MeetRoom: React.FC = () => {
               <span className="text-zinc-500">|</span>
               <span className="text-zinc-300 font-bold">{meetingId}</span>
               {isHost && <span className="px-1.5 py-0.5 bg-primary/20 text-primary text-[9px] font-black rounded uppercase tracking-tighter border border-primary/20">Host</span>}
+              <span className="text-zinc-500">|</span>
+              {renderNetworkLabel()}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-1 justify-center">
-          {/* Main Controls */}
-          <div className="flex items-center gap-3 bg-zinc-800/40 p-2 rounded-full border border-white/5 backdrop-blur-md">
+        <div className="flex items-center gap-3 flex-1 justify-center overflow-x-auto px-2 md:px-0">
+          {/* Main Controls — scrollable on mobile so screen share and all buttons are reachable */}
+          <div className="flex items-center gap-3 bg-zinc-800/40 p-2 rounded-full border border-white/5 backdrop-blur-md flex-shrink-0 min-w-0">
             <Button
               variant="ghost"
               size="icon"
@@ -704,8 +983,11 @@ const MeetRoom: React.FC = () => {
             <Button
               variant="ghost"
               size="icon"
-              className={`h-12 w-12 rounded-full transition-all ${isScreenSharing ? 'bg-primary text-white hover:bg-primary/80' : 'bg-zinc-700 hover:bg-zinc-600 border border-white/10'}`}
+              title={!canScreenShare ? 'Screen share is not supported on this device (e.g. iOS Safari)' : isScreenSharing ? 'Stop sharing' : 'Share screen'}
+              disabled={!canScreenShare}
+              className={`h-12 w-12 rounded-full transition-all ${!canScreenShare ? 'opacity-50 cursor-not-allowed' : ''} ${isScreenSharing ? 'bg-primary text-white hover:bg-primary/80' : 'bg-zinc-700 hover:bg-zinc-600 border border-white/10'}`}
               onClick={async () => {
+                if (!canScreenShare) return;
                 try {
                   if (!isScreenSharing) {
                     const ds = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -743,11 +1025,24 @@ const MeetRoom: React.FC = () => {
                     }
                   }
                 } catch {
-                  toast.error('Screen share failed');
+                  toast.error(isMobile ? 'Screen share not supported or denied on this device' : 'Screen share failed');
                 }
               }}
             >
               <MonitorUp className="h-5 w-5" />
+            </Button>
+
+            {/* Local recording (saved to device) */}
+            <Button
+              variant="ghost"
+              size="icon"
+              title={isRecording ? 'Stop recording' : 'Start local recording (saved to your device)'}
+              className={`h-12 w-12 rounded-full border border-white/10 transition-all ${isRecording ? 'bg-red-600/80 text-white hover:bg-red-600 scale-95' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+              onClick={isRecording ? stopRecording : startRecording}
+            >
+              <span className="relative flex items-center justify-center">
+                <span className={`h-3 w-3 rounded-full ${isRecording ? 'bg-red-300 animate-pulse' : 'bg-red-500'}`} />
+              </span>
             </Button>
 
             {/* Reactions Trigger */}
@@ -766,16 +1061,60 @@ const MeetRoom: React.FC = () => {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Raise hand */}
+            <Button
+              variant="ghost"
+              size="icon"
+              title={isHandRaised ? 'Lower hand' : 'Raise hand'}
+              className={`h-12 w-12 rounded-full border border-white/10 transition-all ${isHandRaised ? 'bg-amber-500 text-white hover:bg-amber-500/90' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+              onClick={toggleHand}
+            >
+              <span className="text-lg">✋</span>
+            </Button>
+
             {isHost && <HostGlobalControls sessionId={meetingId!} />}
 
-            <Button
-              variant="destructive"
-              size="icon"
-              className="h-12 w-16 rounded-3xl hover:bg-destructive/90 transition-all hover:scale-105"
-              onClick={handleLeave}
-            >
-              <PhoneOff className="h-5 w-5" />
-            </Button>
+            {isHost ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="h-12 w-16 rounded-3xl hover:bg-destructive/90 transition-all hover:scale-105"
+                  >
+                    <PhoneOff className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" side="top" className="w-56 bg-zinc-900 border-zinc-800 text-white">
+                  <DropdownMenuLabel className="text-zinc-400">Leave meeting</DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-zinc-800" />
+                  <DropdownMenuItem
+                    onClick={handleLeave}
+                    className="hover:bg-zinc-800 cursor-pointer focus:bg-zinc-800"
+                  >
+                    <PhoneOff className="mr-2 h-4 w-4" /> Leave the meeting
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      socket.emit('end-meeting', { sessionId: meetingId });
+                      toast.success('Ending meeting for everyone…');
+                    }}
+                    className="hover:bg-red-900/40 cursor-pointer text-red-400 focus:bg-red-900/40 focus:text-red-400"
+                  >
+                    <PhoneOff className="mr-2 h-4 w-4" /> End meeting for all
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant="destructive"
+                size="icon"
+                className="h-12 w-16 rounded-3xl hover:bg-destructive/90 transition-all hover:scale-105"
+                onClick={handleLeave}
+              >
+                <PhoneOff className="h-5 w-5" />
+              </Button>
+            )}
           </div>
         </div>
 
@@ -787,11 +1126,17 @@ const MeetRoom: React.FC = () => {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70">
           <div className="w-full max-w-md bg-[#202124] border border-zinc-800 rounded-2xl p-6 text-white">
             <h3 className="text-lg font-semibold mb-2">Join as Guest</h3>
-            <p className="text-sm text-zinc-400 mb-4">Enter your name to join this meeting.</p>
+            <p className="text-sm text-zinc-400 mb-1">Enter your name to join this meeting.</p>
+            {waitingApproval && (
+              <p className="text-xs text-amber-400 mb-3">
+                Waiting for the host to admit you to the meeting…
+              </p>
+            )}
             <div className="flex items-center gap-2">
               <Input
                 placeholder="Your name"
                 value={guestName}
+                disabled={waitingApproval}
                 onChange={(e) => setGuestName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -806,6 +1151,7 @@ const MeetRoom: React.FC = () => {
                 className="flex-1"
               />
               <Button
+                disabled={waitingApproval}
                 onClick={() => {
                   if (!guestName.trim()) {
                     toast.error('Please enter your name');
@@ -871,18 +1217,21 @@ const HostGlobalControls: React.FC<{ sessionId: string }> = ({ sessionId }) => {
         <DropdownMenuItem onClick={() => handleAction('open-video-all')} className="hover:bg-zinc-800 cursor-pointer">
           <Video className="mr-2 h-4 w-4" /> Open All Videos
         </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-zinc-800" />
-        <DropdownMenuItem onClick={() => {
-          socket.emit('end-meeting', { sessionId });
-        }} className="hover:bg-red-900/40 cursor-pointer text-red-400">
-          <PhoneOff className="mr-2 h-4 w-4" /> End Meeting For All
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 };
 
-const ParticipantVideo: React.FC<{ participant: Participant, isHost: boolean, sessionId: string }> = ({ participant, isHost, sessionId }) => {
+interface ParticipantVideoProps {
+  participant: Participant;
+  isHost: boolean;
+  sessionId: string;
+  isPinned?: boolean;
+  isRaised?: boolean;
+  onPinToggle?: (id: string) => void;
+}
+
+const ParticipantVideo: React.FC<ParticipantVideoProps> = ({ participant, isHost, sessionId, isPinned, isRaised, onPinToggle }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -909,18 +1258,44 @@ const ParticipantVideo: React.FC<{ participant: Participant, isHost: boolean, se
         className="w-full h-full object-cover"
       />
       <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-lg text-sm font-medium flex items-center gap-2">
-        {participant.name}
+        <span>{participant.name}</span>
+        {isRaised && <span className="text-[10px]" title="Hand raised">✋</span>}
+        {isPinned && <span className="text-[10px] text-amber-400 font-semibold">Pinned</span>}
       </div>
 
       {isHost && (
         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-          <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full bg-black/50 hover:bg-black/70" onClick={() => handleHostAction('mute')}>
+          <Button
+            variant="secondary"
+            size="icon"
+            className="h-8 w-8 rounded-full bg-black/50 hover:bg-black/70"
+            onClick={() => handleHostAction('mute')}
+          >
             <MicOff className="h-4 w-4" />
           </Button>
-          <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full bg-black/50 hover:bg-black/70" onClick={() => handleHostAction('close-video')}>
+          <Button
+            variant="secondary"
+            size="icon"
+            className="h-8 w-8 rounded-full bg-black/50 hover:bg-black/70"
+            onClick={() => handleHostAction('close-video')}
+          >
             <VideoOff className="h-4 w-4" />
           </Button>
-          <Button variant="destructive" size="icon" className="h-8 w-8 rounded-full" onClick={() => handleHostAction('remove')}>
+          <Button
+            variant="secondary"
+            size="icon"
+            className={`h-8 w-8 rounded-full ${isPinned ? 'bg-amber-500/80 hover:bg-amber-500 text-white' : 'bg-black/50 hover:bg-black/70'}`}
+            onClick={() => onPinToggle?.(participant.id)}
+            title={isPinned ? 'Unpin' : 'Pin'}
+          >
+            <span className="text-xs">📌</span>
+          </Button>
+          <Button
+            variant="destructive"
+            size="icon"
+            className="h-8 w-8 rounded-full"
+            onClick={() => handleHostAction('remove')}
+          >
             <PhoneOff className="h-4 w-4" />
           </Button>
         </div>

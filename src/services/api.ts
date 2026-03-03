@@ -120,5 +120,19 @@ export const api = {
       throw new Error(`Failed to fetch meetings: ${response.status}`);
     }
     return response.json();
-  }
+  },
+
+  /** Restart an ended meeting (host only). Reuses the same meeting ID. */
+  restartMeeting: async (meetingId: string, userId: string) => {
+    const response = await fetch(`${API_URL}/meetings/${meetingId}/restart`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error || 'Failed to restart meeting');
+    }
+    return response.json();
+  },
 };
