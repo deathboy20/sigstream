@@ -335,6 +335,7 @@ const MeetDashboard: React.FC = () => {
   const [code, setCode]         = useState('');
   const [creating, setCreating] = useState(false);
   const [userMeetings, setUserMeetings] = useState<any[]>([]);
+  const [restartingId, setRestartingId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(10);
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -409,6 +410,20 @@ const MeetDashboard: React.FC = () => {
   const handleJoinMeeting = () => {
     if (!code.trim()) { toast.error('Please enter a meeting code'); return; }
     navigate(`/meet/${code.trim()}`);
+  };
+
+  const handleRestartMeeting = async (meetingId: string) => {
+    if (!user) return;
+    setRestartingId(meetingId);
+    try {
+      await api.restartMeeting(meetingId, user.uid);
+      toast.success('Meeting restarted. Joining…');
+      navigate(`/meet/${meetingId}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to restart meeting');
+    } finally {
+      setRestartingId(null);
+    }
   };
 
   /* ── shared font style ── */
@@ -621,31 +636,48 @@ const MeetDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* UPCOMING MEETINGS */}
+          {/* YOUR MEETINGS (active + ended; host can restart ended) */}
           {userMeetings.length > 0 && (
             <div className="w-full max-w-4xl mt-8">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold text-white">Your Meetings</h2>
-                <span className="text-xs text-[#4B5563] uppercase tracking-widest font-bold">Upcoming</span>
+                <span className="text-xs text-[#4B5563] uppercase tracking-widest font-bold">Active & past</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {userMeetings.slice(0, 4).map((m: any) => (
-                  <div key={m.id} 
-                    className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] hover:border-white/[0.15] transition-all group">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-white group-hover:text-[#3B6EF8] transition-colors">{m.title}</span>
-                      <span className="text-[10px] text-[#4B5563]">{new Date(m.createdAt).toLocaleDateString()}</span>
+                {userMeetings.slice(0, 8).map((m: any) => {
+                  const isEnded = m.isActive === false;
+                  const isHost = m.hostId === user?.uid;
+                  return (
+                    <div key={m.id} 
+                      className={`p-4 rounded-2xl border transition-all group ${isEnded ? 'bg-white/[0.02] border-white/[0.06]' : 'bg-white/[0.03] border-white/[0.08] hover:border-white/[0.15]'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-white group-hover:text-[#3B6EF8] transition-colors">{m.title}</span>
+                        <span className="text-[10px] text-[#4B5563]">{new Date(m.createdAt || 0).toLocaleDateString()}</span>
+                      </div>
+                      {isEnded && <span className="text-[10px] text-amber-500/90 font-medium">Ended</span>}
+                      <div className="flex items-center justify-between mt-4">
+                        <code className="text-xs text-[#3B6EF8] bg-[#3B6EF8]/10 px-2 py-1 rounded-lg">{m.id}</code>
+                        {isEnded && isHost ? (
+                          <button 
+                            onClick={() => handleRestartMeeting(m.id)}
+                            disabled={restartingId === m.id}
+                            className="text-xs font-bold text-white bg-[#3B6EF8] hover:bg-[#2E56C9] px-4 py-1.5 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5">
+                            {restartingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                            Start again
+                          </button>
+                        ) : isEnded ? (
+                          <span className="text-[10px] text-[#4B5563]">Ended</span>
+                        ) : (
+                          <button 
+                            onClick={() => navigate(`/meet/${m.id}`)}
+                            className="text-xs font-bold text-white bg-white/[0.05] hover:bg-[#3B6EF8] px-4 py-1.5 rounded-xl transition-all">
+                            Join
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between mt-4">
-                      <code className="text-xs text-[#3B6EF8] bg-[#3B6EF8]/10 px-2 py-1 rounded-lg">{m.id}</code>
-                      <button 
-                        onClick={() => navigate(`/meet/${m.id}`)}
-                        className="text-xs font-bold text-white bg-white/[0.05] hover:bg-[#3B6EF8] px-4 py-1.5 rounded-xl transition-all">
-                        Join
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
