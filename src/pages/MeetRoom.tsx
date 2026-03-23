@@ -67,6 +67,11 @@ interface PendingJoin {
   name: string;
 }
 
+interface SessionParticipantsPayload {
+  sessionId: string;
+  participants: Array<{ viewerId: string; name?: string }>;
+}
+
 // Screen share is supported on desktop; on mobile only Android Chrome typically supports getDisplayMedia
 const canScreenShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
 
@@ -461,65 +466,113 @@ const MeetRoom: React.FC = () => {
     };
   }, [meetingId, user, guestReady]);
 
-  // Handle incoming connections (Signaling)
   useEffect(() => {
-    if (!localStream) return;
+    if (!localStream || !meetingId) return;
 
-    socket.on('viewer-connected', ({ viewerId, name }: { viewerId: string; name?: string }) => {
-      if (viewerId === socket.id) return;
-      console.log("New participant joined:", viewerId);
-      
+    const upsertParticipant = (viewerId: string, stream: MediaStream, name?: string) => {
+      setParticipants(prev => {
+        const existingIndex = prev.findIndex(p => p.id === viewerId);
+        if (existingIndex === -1) {
+          return [...prev, { id: viewerId, stream, name: name || 'Guest' }];
+        }
+        const existing = prev[existingIndex];
+        const next = [...prev];
+        next[existingIndex] = {
+          ...existing,
+          stream,
+          name: name || existing.name
+        };
+        return next;
+      });
+    };
+
+    const shouldInitiate = (remoteId: string) => socket.id.localeCompare(remoteId) < 0;
+
+    const createPeer = (remoteId: string, initiator: boolean, remoteName?: string) => {
+      if (peersRef.current[remoteId]) return peersRef.current[remoteId];
       const peer = new SimplePeer({
-        initiator: true,
-        trickle: false,
-        stream: localStream
+        initiator,
+        trickle: true,
+        stream: localStream,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
       });
 
       peer.on('signal', signal => {
-        socket.emit('signal', { target: viewerId, signal, sessionId: meetingId });
+        socket.emit('signal', { target: remoteId, signal, sessionId: meetingId });
       });
 
       peer.on('stream', stream => {
-        setParticipants(prev => {
-          if (prev.find(p => p.id === viewerId)) return prev;
-          return [...prev, { id: viewerId, stream, name: name || 'Guest' }];
-        });
+        upsertParticipant(remoteId, stream, remoteName);
       });
 
-      peersRef.current[viewerId] = peer;
-    });
+      peer.on('close', () => {
+        delete peersRef.current[remoteId];
+        setParticipants(prev => prev.filter(p => p.id !== remoteId));
+      });
 
-    socket.on('signal', ({ signal, sender }) => {
-      if (peersRef.current[sender]) {
-        peersRef.current[sender].signal(signal);
-      } else {
-        const peer = new SimplePeer({
-          initiator: false,
-          trickle: false,
-          stream: localStream
-        });
+      peer.on('error', () => {
+        delete peersRef.current[remoteId];
+      });
 
-        peer.on('signal', s => {
-          socket.emit('signal', { target: sender, signal: s, sessionId: meetingId });
-        });
+      peersRef.current[remoteId] = peer;
+      return peer;
+    };
 
-        peer.on('stream', stream => {
-          setParticipants(prev => {
-            if (prev.find(p => p.id === sender)) return prev;
-            return [...prev, { id: sender, stream, name: 'Guest' }];
-          });
-        });
+    const handleViewerConnected = ({ viewerId, name }: { viewerId: string; name?: string }) => {
+      if (viewerId === socket.id) return;
+      if (!shouldInitiate(viewerId)) return;
+      createPeer(viewerId, true, name);
+    };
 
-        peer.signal(signal);
-        peersRef.current[sender] = peer;
-      }
-    });
+    const handleSessionParticipants = ({ participants: existingParticipants }: SessionParticipantsPayload) => {
+      existingParticipants.forEach(({ viewerId, name }) => {
+        if (viewerId === socket.id) return;
+        if (!peersRef.current[viewerId] && shouldInitiate(viewerId)) {
+          createPeer(viewerId, true, name);
+        }
+      });
+    };
+
+    const handleSignal = ({ signal, sender, metadata }: { signal: any; sender: string; metadata?: { name?: string } }) => {
+      const peer = peersRef.current[sender] || createPeer(sender, false, metadata?.name);
+      peer.signal(signal);
+    };
+
+    socket.on('viewer-connected', handleViewerConnected);
+    socket.on('session-participants', handleSessionParticipants);
+    socket.on('signal', handleSignal);
+    socket.emit('get-session-participants', { sessionId: meetingId });
 
     return () => {
-      socket.off('viewer-connected');
-      socket.off('signal');
+      socket.off('viewer-connected', handleViewerConnected);
+      socket.off('session-participants', handleSessionParticipants);
+      socket.off('signal', handleSignal);
     };
   }, [localStream, meetingId]);
+
+  const replaceOutgoingVideoTrack = (nextTrack: MediaStreamTrack) => {
+    if (!localStream) return;
+    const currentTrack = localStream.getVideoTracks()[0];
+    Object.values(peersRef.current).forEach(peer => {
+      if (currentTrack) {
+        peer.replaceTrack(currentTrack, nextTrack, localStream);
+      } else {
+        peer.addTrack(nextTrack, localStream);
+      }
+    });
+    if (currentTrack) {
+      localStream.removeTrack(currentTrack);
+      currentTrack.stop();
+    }
+    if (!localStream.getVideoTracks().some(track => track.id === nextTrack.id)) {
+      localStream.addTrack(nextTrack);
+    }
+  };
 
   const toggleMute = () => {
     if (localStream) {
@@ -949,7 +1002,7 @@ const MeetRoom: React.FC = () => {
       </div>
 
       {/* Bottom Bar */}
-      <div className="h-24 px-6 flex items-center justify-between bg-[#202124] border-t border-zinc-800/50 relative z-50">
+      <div className="min-h-24 md:h-24 px-3 md:px-6 py-2 md:py-0 flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0 bg-[#202124] border-t border-zinc-800/50 relative z-50">
         <div className="flex items-center gap-4 text-sm font-medium hidden md:flex text-zinc-400 w-1/4">
           <div className="flex flex-col">
             <span className="text-white text-base tabular-nums">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -963,13 +1016,12 @@ const MeetRoom: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-1 justify-center px-2 md:px-0">
-          {/* Main Controls — scrollable on mobile so screen share and all buttons are reachable */}
-          <div className="flex items-center gap-2 md:gap-3 bg-zinc-800/40 p-2 rounded-full border border-white/5 backdrop-blur-md flex-shrink-0 overflow-x-auto scrollbar-hide max-w-full">
+        <div className="flex items-center gap-3 w-full md:flex-1 justify-center px-1 md:px-0">
+          <div className="w-full md:w-auto flex items-center justify-center flex-wrap md:flex-nowrap gap-2 md:gap-3 bg-zinc-800/40 p-2 rounded-2xl md:rounded-full border border-white/5 backdrop-blur-md">
             <Button
               variant="ghost"
               size="icon"
-              className={`h-12 w-12 rounded-full border border-white/10 transition-all ${isMuted ? 'bg-destructive text-white hover:bg-destructive/80 scale-95' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isMuted ? 'bg-destructive text-white hover:bg-destructive/80 scale-95' : 'bg-zinc-700 hover:bg-zinc-600'}`}
               onClick={toggleMute}
             >
               {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
@@ -978,7 +1030,7 @@ const MeetRoom: React.FC = () => {
             <Button
               variant="ghost"
               size="icon"
-              className={`h-12 w-12 rounded-full border border-white/10 transition-all ${isVideoOff ? 'bg-destructive text-white hover:bg-destructive/80 scale-95' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isVideoOff ? 'bg-destructive text-white hover:bg-destructive/80 scale-95' : 'bg-zinc-700 hover:bg-zinc-600'}`}
               onClick={toggleVideo}
             >
               {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
@@ -989,26 +1041,21 @@ const MeetRoom: React.FC = () => {
               size="icon"
               title={!canScreenShare ? 'Screen share is not supported on this device (e.g. iOS Safari)' : isScreenSharing ? 'Stop sharing' : 'Share screen'}
               disabled={!canScreenShare}
-              className={`h-12 w-12 rounded-full transition-all ${!canScreenShare ? 'opacity-50 cursor-not-allowed' : ''} ${isScreenSharing ? 'bg-primary text-white hover:bg-primary/80' : 'bg-zinc-700 hover:bg-zinc-600 border border-white/10'}`}
+              className={`h-10 w-10 md:h-12 md:w-12 rounded-full transition-all ${!canScreenShare ? 'opacity-50 cursor-not-allowed' : ''} ${isScreenSharing ? 'bg-primary text-white hover:bg-primary/80' : 'bg-zinc-700 hover:bg-zinc-600 border border-white/10'}`}
               onClick={async () => {
                 if (!canScreenShare) return;
                 try {
                   if (!isScreenSharing) {
                     const ds = await navigator.mediaDevices.getDisplayMedia({ video: true });
                     const newTrack = ds.getVideoTracks()[0];
-                    const oldTrack = localStream?.getVideoTracks()[0] || null;
-                    Object.values(peersRef.current).forEach(peer => {
-                      if (oldTrack) peer.replaceTrack(oldTrack, newTrack, localStream!);
-                    });
+                    replaceOutgoingVideoTrack(newTrack);
                     setDisplayStream(ds);
                     if (localVideoRef.current) localVideoRef.current.srcObject = ds;
                     setIsScreenSharing(true);
                     newTrack.onended = async () => {
                       const cam = await navigator.mediaDevices.getUserMedia({ video: true });
                       const camTrack = cam.getVideoTracks()[0];
-                      Object.values(peersRef.current).forEach(peer => {
-                        peer.replaceTrack(newTrack, camTrack, localStream!);
-                      });
+                      replaceOutgoingVideoTrack(camTrack);
                       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
                       setIsScreenSharing(false);
                       ds.getTracks().forEach(t => t.stop());
@@ -1016,12 +1063,9 @@ const MeetRoom: React.FC = () => {
                     };
                   } else {
                     if (displayStream) {
-                      const screenTrack = displayStream.getVideoTracks()[0];
                       const cam = await navigator.mediaDevices.getUserMedia({ video: true });
                       const camTrack = cam.getVideoTracks()[0];
-                      Object.values(peersRef.current).forEach(peer => {
-                        peer.replaceTrack(screenTrack, camTrack, localStream!);
-                      });
+                      replaceOutgoingVideoTrack(camTrack);
                       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
                       setIsScreenSharing(false);
                       displayStream.getTracks().forEach(t => t.stop());
@@ -1041,7 +1085,7 @@ const MeetRoom: React.FC = () => {
               variant="ghost"
               size="icon"
               title={isRecording ? 'Stop recording' : 'Start local recording (saved to your device)'}
-              className={`h-12 w-12 rounded-full border border-white/10 transition-all ${isRecording ? 'bg-red-600/80 text-white hover:bg-red-600 scale-95' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isRecording ? 'bg-red-600/80 text-white hover:bg-red-600 scale-95' : 'bg-zinc-700 hover:bg-zinc-600'}`}
               onClick={isRecording ? stopRecording : startRecording}
             >
               <span className="relative flex items-center justify-center">
@@ -1052,7 +1096,7 @@ const MeetRoom: React.FC = () => {
             {/* Reactions Trigger */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-12 w-12 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-white/10">
+                <Button variant="ghost" size="icon" className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-zinc-700 hover:bg-zinc-600 border border-white/10">
                   <span className="text-xl">😊</span>
                 </Button>
               </DropdownMenuTrigger>
@@ -1070,7 +1114,7 @@ const MeetRoom: React.FC = () => {
               variant="ghost"
               size="icon"
               title={isHandRaised ? 'Lower hand' : 'Raise hand'}
-              className={`h-12 w-12 rounded-full border border-white/10 transition-all ${isHandRaised ? 'bg-amber-500 text-white hover:bg-amber-500/90' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isHandRaised ? 'bg-amber-500 text-white hover:bg-amber-500/90' : 'bg-zinc-700 hover:bg-zinc-600'}`}
               onClick={toggleHand}
             >
               <span className="text-lg">✋</span>
@@ -1084,7 +1128,7 @@ const MeetRoom: React.FC = () => {
                   <Button
                     variant="destructive"
                     size="icon"
-                    className="h-12 w-16 rounded-3xl hover:bg-destructive/90 transition-all hover:scale-105"
+                    className="h-10 w-14 md:h-12 md:w-16 rounded-3xl hover:bg-destructive/90 transition-all hover:scale-105"
                   >
                     <PhoneOff className="h-5 w-5" />
                   </Button>
@@ -1113,7 +1157,7 @@ const MeetRoom: React.FC = () => {
               <Button
                 variant="destructive"
                 size="icon"
-                className="h-12 w-16 rounded-3xl hover:bg-destructive/90 transition-all hover:scale-105"
+                className="h-10 w-14 md:h-12 md:w-16 rounded-3xl hover:bg-destructive/90 transition-all hover:scale-105"
                 onClick={handleLeave}
               >
                 <PhoneOff className="h-5 w-5" />
@@ -1122,7 +1166,7 @@ const MeetRoom: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 w-1/4 justify-end"></div>
+        <div className="hidden md:flex items-center gap-1 w-1/4 justify-end"></div>
       </div>
 
       

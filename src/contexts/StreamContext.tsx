@@ -219,11 +219,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
     };
 
-    const handleViewerConnected = (viewerId: string) => {
+    const handleViewerConnected = (payload: string | { viewerId: string; name?: string }) => {
+      const viewerId = typeof payload === 'string' ? payload : payload.viewerId;
       console.log('Viewer connected via socket:', viewerId);
-      // We could trigger a refresh of viewers list here
-      // But polling handles the list update.
-      // This might be used for instant notifications if needed.
     };
 
     const handleViewerWatching = ({ viewerId }: { viewerId: string }) => {
