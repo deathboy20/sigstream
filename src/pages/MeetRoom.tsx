@@ -252,6 +252,10 @@ const MeetRoom: React.FC = () => {
         return [...prev, data];
       });
     });
+
+    socket.on('pending-requests-updated', ({ viewerId }: { viewerId: string }) => {
+      setPendingRequests(prev => prev.filter(p => p.viewerId !== viewerId));
+    });
     socket.on('join-approved', async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -277,6 +281,7 @@ const MeetRoom: React.FC = () => {
         delete peersRef.current[viewerId];
       }
       setParticipants(prev => prev.filter(p => p.id !== viewerId));
+      setPendingRequests(prev => prev.filter(p => p.viewerId !== viewerId));
     });
     socket.on('meeting-ended', () => {
       toast.error('Meeting has ended');
@@ -287,6 +292,7 @@ const MeetRoom: React.FC = () => {
     });
     return () => {
       socket.off('pending-join');
+      socket.off('pending-requests-updated');
       socket.off('join-approved');
       socket.off('join-rejected');
       socket.off('viewer-left');
