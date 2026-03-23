@@ -261,6 +261,7 @@ const MeetRoom: React.FC = () => {
         setHasJoined(true);
         setWaitingApproval(false);
         socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id, name: guestName || 'Guest' });
+        socket.emit('viewer-ready', { sessionId: meetingId!, viewerId: socket.id });
       } catch {
         toast.error('Could not access camera/microphone');
       }
