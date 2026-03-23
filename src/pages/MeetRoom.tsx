@@ -69,7 +69,7 @@ interface PendingJoin {
 
 interface SessionParticipantsPayload {
   sessionId: string;
-  participants: Array<{ viewerId: string; name?: string }>;
+  participants: Array<{ viewerId: string; name?: string; isHost?: boolean }>;
 }
 
 // Screen share is supported on desktop; on mobile only Android Chrome typically supports getDisplayMedia
@@ -446,6 +446,15 @@ const MeetRoom: React.FC = () => {
     const onConnect = () => {
       if (meetingId && (user || guestReady)) {
         toast.success('Reconnected to meeting');
+        if (user) {
+          socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
+          if (meetingData?.hostId === user.uid) {
+            setIsHost(true);
+          }
+        } else {
+          socket.emit('join-session', meetingId);
+        }
+        setHasJoined(true);
       }
     };
 
@@ -464,7 +473,7 @@ const MeetRoom: React.FC = () => {
       socket.off('disconnect', onDisconnect);
       socket.off('connect', onConnect);
     };
-  }, [meetingId, user, guestReady]);
+  }, [meetingId, user, guestReady, meetingData]);
 
   useEffect(() => {
     if (!localStream || !meetingId) return;
@@ -523,15 +532,22 @@ const MeetRoom: React.FC = () => {
       return peer;
     };
 
-    const handleViewerConnected = ({ viewerId, name }: { viewerId: string; name?: string }) => {
+    const handleViewerConnected = ({ viewerId, name, isHost }: { viewerId: string; name?: string; isHost?: boolean }) => {
       if (viewerId === socket.id) return;
+      if (isHost && user && meetingData && name) {
+        setIsHost(true);
+      }
+      upsertParticipant(viewerId, null as any, name);
       if (!shouldInitiate(viewerId)) return;
       createPeer(viewerId, true, name);
     };
 
     const handleSessionParticipants = ({ participants: existingParticipants }: SessionParticipantsPayload) => {
-      existingParticipants.forEach(({ viewerId, name }) => {
+      existingParticipants.forEach(({ viewerId, name, isHost }) => {
         if (viewerId === socket.id) return;
+        if (isHost && user && meetingData && name) {
+          setIsHost(true);
+        }
         if (!peersRef.current[viewerId] && shouldInitiate(viewerId)) {
           createPeer(viewerId, true, name);
         }
