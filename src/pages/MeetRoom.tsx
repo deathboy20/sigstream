@@ -213,8 +213,8 @@ const MeetRoom: React.FC = () => {
           setLocalStream(stream);
           if (localVideoRef.current) localVideoRef.current.srcObject = stream;
           socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
-          socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id, name: user.displayName || 'Anonymous' });
           setHasJoined(true);
+          socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id, name: user.displayName || 'Anonymous' });
         } else {
           socket.emit('join-request', { sessionId: meetingId!, viewerId: socket.id, name: guestName });
           setWaitingApproval(true);
@@ -255,6 +255,7 @@ const MeetRoom: React.FC = () => {
         socket.emit('join-session', meetingId!);
         setHasJoined(true);
         setWaitingApproval(false);
+        socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id, name: guestName || 'Guest' });
       } catch {
         toast.error('Could not access camera/microphone');
       }
@@ -613,9 +614,9 @@ const MeetRoom: React.FC = () => {
     const total = participants.length + 1;
     if (total === 1) return 'grid-cols-1';
     if (total === 2) return 'grid-cols-1 md:grid-cols-2';
-    if (total <= 4) return 'grid-cols-2';
-    if (total <= 6) return 'grid-cols-2 md:grid-cols-3';
-    return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+    if (total <= 4) return 'grid-cols-1 sm:grid-cols-2';
+    if (total <= 6) return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
+    return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
   };
 
   const pinnedParticipant = pinnedId ? participants.find(p => p.id === pinnedId) : undefined;
@@ -743,12 +744,15 @@ const MeetRoom: React.FC = () => {
           </div>
         </div>
 
-        {/* Sidebar */}
+        {/* Sidebar - bottom sheet on mobile, side panel on desktop */}
         {activeSidebar !== 'none' && (
-          <div className="w-80 sm:w-96 bg-zinc-900 border-l border-zinc-800 flex flex-col shadow-2xl animate-in slide-in-from-right duration-300">
-            <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+          <div className="fixed md:relative inset-x-0 bottom-0 md:inset-auto md:w-80 md:border-l bg-zinc-900 md:bg-zinc-900 border-zinc-800 flex flex-col shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right duration-300 rounded-t-2xl md:rounded-none z-50 max-h-[70vh] md:max-h-none">
+            <div className="p-4 border-b border-zinc-800 flex items-center justify-between flex-shrink-0">
               <h2 className="text-lg font-semibold capitalize">{activeSidebar}</h2>
-              <Button variant="ghost" size="icon" onClick={() => setActiveSidebar('none')} className="hover:bg-white/10">
+              <Button variant="ghost" size="icon" onClick={() => setActiveSidebar('none')} className="hover:bg-white/10 md:hidden">
+                <Grid className="h-5 w-5 rotate-45" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => setActiveSidebar('none')} className="hover:bg-white/10 hidden md:inline-flex">
                 <Grid className="h-5 w-5 rotate-45" />
               </Button>
             </div>
@@ -811,7 +815,7 @@ const MeetRoom: React.FC = () => {
                           <Button
                             variant="outline"
                             size="xs"
-                            className="h-6 text-[10px] px-2 py-0 rounded-full border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500"
+                            className="border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500"
                             onClick={() => {
                               pendingRequests.forEach(req => {
                                 socket.emit('approve-join', { sessionId: meetingId!, viewerId: req.viewerId });
@@ -848,22 +852,22 @@ const MeetRoom: React.FC = () => {
                     )}
                     {/* Remote Users */}
                     {participants.map(p => (
-                      <div key={p.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors group">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="w-8 h-8 flex-shrink-0">
-                            <AvatarFallback className="bg-zinc-700 text-white text-[10px] font-bold">
-                              {p.name.charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm font-medium flex items-center gap-1">
-                            {p.name}
-                            {raisedHands.includes(p.id) && <span className="text-[10px]" title="Hand raised">✋</span>}
-                            {pinnedId === p.id && <span className="text-[10px] text-amber-400 font-semibold">Pinned</span>}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
+                      <div key={p.id} className="flex flex-col gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="w-8 h-8 flex-shrink-0">
+                              <AvatarFallback className="bg-zinc-700 text-white text-[10px] font-bold">
+                                {p.name.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium flex items-center gap-1">
+                              {p.name}
+                              {raisedHands.includes(p.id) && <span className="text-[10px]" title="Hand raised">✋</span>}
+                              {pinnedId === p.id && <span className="text-[10px] text-amber-400 font-semibold">Pinned</span>}
+                            </span>
+                          </div>
                           {isHost && (
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                            <div className="flex items-center gap-1">
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -875,12 +879,12 @@ const MeetRoom: React.FC = () => {
                               </Button>
                               <Button
                                 variant="ghost"
-                                size="icon"
-                                className="h-7 w-max rounded-full px-2 text-[10px] font-semibold hover:bg-primary/20 text-primary"
+                                size="sm"
+                                className="h-7 px-2 text-[10px] font-semibold hover:bg-primary/20 text-primary rounded-full"
                                 onClick={() => socket.emit('transfer-host', { sessionId: meetingId, targetId: p.id })}
                                 title="Make this participant the new host"
                               >
-                                Make host
+                                Host
                               </Button>
                               <Button
                                 variant="ghost"
@@ -959,9 +963,9 @@ const MeetRoom: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-1 justify-center overflow-x-auto px-2 md:px-0">
+        <div className="flex items-center gap-3 flex-1 justify-center px-2 md:px-0">
           {/* Main Controls — scrollable on mobile so screen share and all buttons are reachable */}
-          <div className="flex items-center gap-3 bg-zinc-800/40 p-2 rounded-full border border-white/5 backdrop-blur-md flex-shrink-0 min-w-0">
+          <div className="flex items-center gap-2 md:gap-3 bg-zinc-800/40 p-2 rounded-full border border-white/5 backdrop-blur-md flex-shrink-0 overflow-x-auto scrollbar-hide max-w-full">
             <Button
               variant="ghost"
               size="icon"
