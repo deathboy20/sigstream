@@ -67,6 +67,11 @@ interface PendingJoin {
   name: string;
 }
 
+interface SessionParticipantsPayload {
+  sessionId: string;
+  participants: Array<{ viewerId: string; name?: string }>;
+}
+
 // Screen share is supported on desktop; on mobile only Android Chrome typically supports getDisplayMedia
 const canScreenShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
 
@@ -461,65 +466,113 @@ const MeetRoom: React.FC = () => {
     };
   }, [meetingId, user, guestReady]);
 
-  // Handle incoming connections (Signaling)
   useEffect(() => {
-    if (!localStream) return;
+    if (!localStream || !meetingId) return;
 
-    socket.on('viewer-connected', ({ viewerId, name }: { viewerId: string; name?: string }) => {
-      if (viewerId === socket.id) return;
-      console.log("New participant joined:", viewerId);
-      
+    const upsertParticipant = (viewerId: string, stream: MediaStream, name?: string) => {
+      setParticipants(prev => {
+        const existingIndex = prev.findIndex(p => p.id === viewerId);
+        if (existingIndex === -1) {
+          return [...prev, { id: viewerId, stream, name: name || 'Guest' }];
+        }
+        const existing = prev[existingIndex];
+        const next = [...prev];
+        next[existingIndex] = {
+          ...existing,
+          stream,
+          name: name || existing.name
+        };
+        return next;
+      });
+    };
+
+    const shouldInitiate = (remoteId: string) => socket.id.localeCompare(remoteId) < 0;
+
+    const createPeer = (remoteId: string, initiator: boolean, remoteName?: string) => {
+      if (peersRef.current[remoteId]) return peersRef.current[remoteId];
       const peer = new SimplePeer({
-        initiator: true,
-        trickle: false,
-        stream: localStream
+        initiator,
+        trickle: true,
+        stream: localStream,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        }
       });
 
       peer.on('signal', signal => {
-        socket.emit('signal', { target: viewerId, signal, sessionId: meetingId });
+        socket.emit('signal', { target: remoteId, signal, sessionId: meetingId });
       });
 
       peer.on('stream', stream => {
-        setParticipants(prev => {
-          if (prev.find(p => p.id === viewerId)) return prev;
-          return [...prev, { id: viewerId, stream, name: name || 'Guest' }];
-        });
+        upsertParticipant(remoteId, stream, remoteName);
       });
 
-      peersRef.current[viewerId] = peer;
-    });
+      peer.on('close', () => {
+        delete peersRef.current[remoteId];
+        setParticipants(prev => prev.filter(p => p.id !== remoteId));
+      });
 
-    socket.on('signal', ({ signal, sender }) => {
-      if (peersRef.current[sender]) {
-        peersRef.current[sender].signal(signal);
-      } else {
-        const peer = new SimplePeer({
-          initiator: false,
-          trickle: false,
-          stream: localStream
-        });
+      peer.on('error', () => {
+        delete peersRef.current[remoteId];
+      });
 
-        peer.on('signal', s => {
-          socket.emit('signal', { target: sender, signal: s, sessionId: meetingId });
-        });
+      peersRef.current[remoteId] = peer;
+      return peer;
+    };
 
-        peer.on('stream', stream => {
-          setParticipants(prev => {
-            if (prev.find(p => p.id === sender)) return prev;
-            return [...prev, { id: sender, stream, name: 'Guest' }];
-          });
-        });
+    const handleViewerConnected = ({ viewerId, name }: { viewerId: string; name?: string }) => {
+      if (viewerId === socket.id) return;
+      if (!shouldInitiate(viewerId)) return;
+      createPeer(viewerId, true, name);
+    };
 
-        peer.signal(signal);
-        peersRef.current[sender] = peer;
-      }
-    });
+    const handleSessionParticipants = ({ participants: existingParticipants }: SessionParticipantsPayload) => {
+      existingParticipants.forEach(({ viewerId, name }) => {
+        if (viewerId === socket.id) return;
+        if (!peersRef.current[viewerId] && shouldInitiate(viewerId)) {
+          createPeer(viewerId, true, name);
+        }
+      });
+    };
+
+    const handleSignal = ({ signal, sender, metadata }: { signal: any; sender: string; metadata?: { name?: string } }) => {
+      const peer = peersRef.current[sender] || createPeer(sender, false, metadata?.name);
+      peer.signal(signal);
+    };
+
+    socket.on('viewer-connected', handleViewerConnected);
+    socket.on('session-participants', handleSessionParticipants);
+    socket.on('signal', handleSignal);
+    socket.emit('get-session-participants', { sessionId: meetingId });
 
     return () => {
-      socket.off('viewer-connected');
-      socket.off('signal');
+      socket.off('viewer-connected', handleViewerConnected);
+      socket.off('session-participants', handleSessionParticipants);
+      socket.off('signal', handleSignal);
     };
   }, [localStream, meetingId]);
+
+  const replaceOutgoingVideoTrack = (nextTrack: MediaStreamTrack) => {
+    if (!localStream) return;
+    const currentTrack = localStream.getVideoTracks()[0];
+    Object.values(peersRef.current).forEach(peer => {
+      if (currentTrack) {
+        peer.replaceTrack(currentTrack, nextTrack, localStream);
+      } else {
+        peer.addTrack(nextTrack, localStream);
+      }
+    });
+    if (currentTrack) {
+      localStream.removeTrack(currentTrack);
+      currentTrack.stop();
+    }
+    if (!localStream.getVideoTracks().some(track => track.id === nextTrack.id)) {
+      localStream.addTrack(nextTrack);
+    }
+  };
 
   const toggleMute = () => {
     if (localStream) {
@@ -996,19 +1049,14 @@ const MeetRoom: React.FC = () => {
                   if (!isScreenSharing) {
                     const ds = await navigator.mediaDevices.getDisplayMedia({ video: true });
                     const newTrack = ds.getVideoTracks()[0];
-                    const oldTrack = localStream?.getVideoTracks()[0] || null;
-                    Object.values(peersRef.current).forEach(peer => {
-                      if (oldTrack) peer.replaceTrack(oldTrack, newTrack, localStream!);
-                    });
+                    replaceOutgoingVideoTrack(newTrack);
                     setDisplayStream(ds);
                     if (localVideoRef.current) localVideoRef.current.srcObject = ds;
                     setIsScreenSharing(true);
                     newTrack.onended = async () => {
                       const cam = await navigator.mediaDevices.getUserMedia({ video: true });
                       const camTrack = cam.getVideoTracks()[0];
-                      Object.values(peersRef.current).forEach(peer => {
-                        peer.replaceTrack(newTrack, camTrack, localStream!);
-                      });
+                      replaceOutgoingVideoTrack(camTrack);
                       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
                       setIsScreenSharing(false);
                       ds.getTracks().forEach(t => t.stop());
@@ -1016,12 +1064,9 @@ const MeetRoom: React.FC = () => {
                     };
                   } else {
                     if (displayStream) {
-                      const screenTrack = displayStream.getVideoTracks()[0];
                       const cam = await navigator.mediaDevices.getUserMedia({ video: true });
                       const camTrack = cam.getVideoTracks()[0];
-                      Object.values(peersRef.current).forEach(peer => {
-                        peer.replaceTrack(screenTrack, camTrack, localStream!);
-                      });
+                      replaceOutgoingVideoTrack(camTrack);
                       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
                       setIsScreenSharing(false);
                       displayStream.getTracks().forEach(t => t.stop());
