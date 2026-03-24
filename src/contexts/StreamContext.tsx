@@ -224,14 +224,49 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       console.log('Viewer connected via socket:', viewerId);
     };
 
+    const handleSessionParticipants = ({ sessionId: pid, participants }: { sessionId: string; participants: Array<{ viewerId: string; name: string; isHost: boolean }> }) => {
+      if (pid !== session?.id) return;
+      console.log('Received session-participants update:', participants);
+      const approvedIds = viewersRef.current.filter(v => v.status === 'approved').map(v => v.id);
+      const newApprovedIds = participants.map(p => p.viewerId);
+      const addedIds = newApprovedIds.filter((id: string) => !approvedIds.includes(id));
+      const removedIds = approvedIds.filter((id: string) => !newApprovedIds.includes(id));
+      if (addedIds.length > 0) {
+        console.log('New participants detected:', addedIds);
+      }
+      if (removedIds.length > 0) {
+        console.log('Participants left:', removedIds);
+        setViewers(prev => {
+          const filtered = prev.filter(v => v.status !== 'approved' || newApprovedIds.includes(v.id));
+          removedIds.forEach(rid => {
+            if (peersRef.current[rid]) {
+              peersRef.current[rid].destroy();
+              delete peersRef.current[rid];
+            }
+          });
+          return filtered;
+        });
+      }
+    };
+
+    const handleViewerLeft = ({ viewerId }: { viewerId: string }) => {
+      console.log('Viewer left:', viewerId);
+      setViewers(prev => prev.filter(v => v.id !== viewerId));
+      if (peersRef.current[viewerId]) {
+        peersRef.current[viewerId].destroy();
+        delete peersRef.current[viewerId];
+      }
+    };
+
     const handleViewerWatching = ({ viewerId }: { viewerId: string }) => {
       console.log(`CONFIRMATION: Viewer ${viewerId} is receiving and watching the stream.`);
       toast.success(`Viewer is now watching the stream!`);
-      // Optional: Update viewer status in state to "watching" if you have such a state
     };
 
     socket.on('signal', handleSignal);
     socket.on('viewer-connected', handleViewerConnected);
+    socket.on('session-participants', handleSessionParticipants);
+    socket.on('viewer-left', handleViewerLeft);
     socket.on('viewer-ready', handleViewerReady);
     socket.on('viewer-watching', handleViewerWatching);
 
@@ -239,6 +274,8 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       socket.off('connect', joinSession);
       socket.off('signal', handleSignal);
       socket.off('viewer-connected', handleViewerConnected);
+      socket.off('session-participants', handleSessionParticipants);
+      socket.off('viewer-left', handleViewerLeft);
       socket.off('viewer-ready', handleViewerReady);
       socket.off('viewer-watching', handleViewerWatching);
       socket.emit('leave-session', session.id);
