@@ -95,6 +95,7 @@ const MeetRoom: React.FC = () => {
   const [guestName, setGuestName] = useState('');
   const [hasJoined, setHasJoined] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const [guestReady, setGuestReady] = useState(false);
   const [waitingApproval, setWaitingApproval] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<PendingJoin[]>([]);
@@ -223,11 +224,11 @@ const MeetRoom: React.FC = () => {
           const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           setLocalStream(stream);
           if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-          socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
+          socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || 'Anonymous' });
           setHasJoined(true);
           socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id, name: user.displayName || 'Anonymous' });
         } else {
-          socket.emit('join-request', { sessionId: meetingId!, viewerId: socket.id, name: guestName });
+          socket.emit('join-request', { sessionId: meetingId!, viewerId: socket.id, name: guestName.trim() });
           setWaitingApproval(true);
         }
       } catch (err) {
@@ -262,15 +263,17 @@ const MeetRoom: React.FC = () => {
     socket.on('pending-requests-updated', ({ viewerId }: { viewerId: string }) => {
       setPendingRequests(prev => prev.filter(p => p.viewerId !== viewerId));
     });
-    socket.on('join-approved', async () => {
+    socket.on('join-approved', async (payload?: { approvedName?: string }) => {
       try {
+        const approvedName = payload?.approvedName?.trim() || guestName.trim() || 'Guest';
+        setGuestName(approvedName);
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setLocalStream(stream);
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-        socket.emit('join-session', meetingId!);
+        socket.emit('join-session', { sessionId: meetingId!, name: approvedName });
         setHasJoined(true);
         setWaitingApproval(false);
-        socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id, name: guestName || 'Guest' });
+        socket.emit('viewer-connected', { sessionId: meetingId!, viewerId: socket.id, name: approvedName });
         socket.emit('viewer-ready', { sessionId: meetingId!, viewerId: socket.id });
       } catch {
         toast.error('Could not access camera/microphone');
@@ -305,12 +308,12 @@ const MeetRoom: React.FC = () => {
       socket.off('meeting-ended');
       socket.off('host-left');
     };
-  }, [meetingId, isHost, navigate, peersRef]);
+  }, [meetingId, isHost, navigate, peersRef, guestName]);
 
   // If the user signs in after joining as guest, mark role and update host state
   useEffect(() => {
     if (!meetingId || !user || !hasJoined) return;
-    socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
+    socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || 'Anonymous' });
     if (meetingData && meetingData.hostId === user.uid) {
       setIsHost(true);
     }
@@ -460,12 +463,12 @@ const MeetRoom: React.FC = () => {
       if (meetingId && (user || guestReady)) {
         toast.success('Reconnected to meeting');
         if (user) {
-          socket.emit('join-session', { sessionId: meetingId, userId: user.uid });
+          socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || 'Anonymous' });
           if (meetingData?.hostId === user.uid) {
             setIsHost(true);
           }
         } else {
-          socket.emit('join-session', meetingId);
+          socket.emit('join-session', { sessionId: meetingId, name: guestName || 'Guest' });
         }
         setHasJoined(true);
       }
@@ -486,7 +489,7 @@ const MeetRoom: React.FC = () => {
       socket.off('disconnect', onDisconnect);
       socket.off('connect', onConnect);
     };
-  }, [meetingId, user, guestReady, meetingData]);
+  }, [meetingId, user, guestReady, meetingData, guestName]);
 
   useEffect(() => {
     if (!localStream || !meetingId) return;
@@ -719,22 +722,146 @@ const MeetRoom: React.FC = () => {
 
   return (
     <div className="h-screen bg-[#202124] flex flex-col text-white overflow-hidden font-sans">
-      <header className="h-12 px-4 border-b border-zinc-800/50 flex items-center justify-between sticky top-0 bg-[#202124]/80 backdrop-blur-md z-50">
+      <header className="h-12 md:h-14 px-3 md:px-4 border-b border-zinc-800/50 flex items-center justify-between sticky top-0 bg-[#202124]/80 backdrop-blur-md z-50">
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-          <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-8 w-auto" />
-          <span className="text-xl font-semibold">Soko Meet</span>
+          <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-7 md:h-8 w-auto" />
+          <span className="text-base md:text-xl font-semibold">Soko Meet</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2">
           <Button variant="ghost" size="icon" className={`rounded-full ${activeSidebar === 'chat' ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`} onClick={() => setActiveSidebar(activeSidebar === 'chat' ? 'none' : 'chat')}>
-            <MessageSquare className="h-5 w-5" />
+            <MessageSquare className="h-4 w-4 md:h-5 md:w-5" />
           </Button>
-          <Button variant="ghost" size="icon" className={`rounded-full ${activeSidebar === 'participants' ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`} onClick={() => setActiveSidebar(activeSidebar === 'participants' ? 'none' : 'participants')}>
-            <Users className="h-5 w-5" />
-          </Button>
+          <Dialog open={participantsOpen} onOpenChange={setParticipantsOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="icon" className={`rounded-full ${participantsOpen ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`}>
+                <Users className="h-4 w-4 md:h-5 md:w-5" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-[#202124] border-zinc-800 text-white sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Participants</DialogTitle>
+                <DialogDescription className="text-zinc-400">
+                  In call ({participants.length + 1})
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="w-8 h-8 flex-shrink-0">
+                        <AvatarImage src={user?.photoURL || ''} alt={(user?.displayName || guestName || 'User')} />
+                        <AvatarFallback className="bg-[#3B6EF8] text-white text-[10px] font-bold">
+                          {(user?.displayName?.charAt(0) || guestName?.charAt(0) || 'U')}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">{(user?.displayName || guestName || 'You')} (You)</span>
+                      {isHost && <span className="ml-1 text-xs text-primary font-bold">(Host)</span>}
+                    </div>
+                    <div className="flex gap-1">
+                      {isMuted && <MicOff className="h-4 w-4 text-destructive" />}
+                      {isHandRaised && <span className="text-xs" title="Your hand is raised">✋</span>}
+                      {isHost && <ShieldCheck className="h-4 w-4 text-primary" />}
+                    </div>
+                  </div>
+                  {isHost && pendingRequests.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-2">
+                        <span className="text-xs text-zinc-400">Pending requests</span>
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          className="border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500"
+                          onClick={() => {
+                            pendingRequests.forEach(req => {
+                              socket.emit('approve-join', { sessionId: meetingId!, viewerId: req.viewerId });
+                            });
+                            setPendingRequests([]);
+                          }}
+                        >
+                          Admit all
+                        </Button>
+                      </div>
+                      {pendingRequests.map(req => (
+                        <div key={req.viewerId} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="w-8 h-8 flex-shrink-0">
+                              <AvatarFallback className="bg-zinc-700 text-white text-[10px] font-bold">
+                                {req.name.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium">{req.name}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button variant="secondary" size="sm" onClick={() => {
+                              socket.emit('approve-join', { sessionId: meetingId!, viewerId: req.viewerId });
+                              setPendingRequests(prev => prev.filter(p => p.viewerId !== req.viewerId));
+                            }}>Approve</Button>
+                            <Button variant="destructive" size="sm" onClick={() => {
+                              socket.emit('reject-join', { sessionId: meetingId!, viewerId: req.viewerId });
+                              setPendingRequests(prev => prev.filter(p => p.viewerId !== req.viewerId));
+                            }}>Reject</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {participants.map(p => (
+                    <div key={p.id} className="flex flex-col gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-8 h-8 flex-shrink-0">
+                            <AvatarFallback className="bg-zinc-700 text-white text-[10px] font-bold">
+                              {p.name.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium flex items-center gap-1">
+                            {p.name}
+                            {raisedHands.includes(p.id) && <span className="text-[10px]" title="Hand raised">✋</span>}
+                            {pinnedId === p.id && <span className="text-[10px] text-amber-400 font-semibold">Pinned</span>}
+                          </span>
+                        </div>
+                        {isHost && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-full hover:bg-white/10"
+                              onClick={() => socket.emit('targeted-command', { sessionId: meetingId, targetId: p.id, command: 'mute' })}
+                              title="Mute"
+                            >
+                              <MicOff className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-[10px] font-semibold hover:bg-primary/20 text-primary rounded-full"
+                              onClick={() => socket.emit('transfer-host', { sessionId: meetingId, targetId: p.id })}
+                              title="Make this participant the new host"
+                            >
+                              Host
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-full hover:bg-destructive/20 text-destructive"
+                              onClick={() => socket.emit('targeted-command', { sessionId: meetingId, targetId: p.id, command: 'remove' })}
+                              title="Remove from meeting"
+                            >
+                              <PhoneOff className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
           <Dialog open={shareOpen} onOpenChange={setShareOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full hover:bg-white/10">
-                <Share2 className="h-5 w-5" />
+                <Share2 className="h-4 w-4 md:h-5 md:w-5" />
               </Button>
             </DialogTrigger>
             <DialogContent className="bg-[#202124] border-zinc-800 text-white">
@@ -759,7 +886,7 @@ const MeetRoom: React.FC = () => {
       </header>
       {/* Main Grid Area */}
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 p-4 flex items-center justify-center relative overflow-hidden">
+        <div className="flex-1 p-2 md:p-4 flex items-center justify-center relative overflow-hidden">
           {/* Floating Reactions */}
           <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
             {reactions.map((r) => (
@@ -777,7 +904,7 @@ const MeetRoom: React.FC = () => {
             ))}
           </div>
 
-          <div className={`grid gap-4 w-full max-w-7xl mx-auto transition-all duration-500 pt-2 ${getGridClass()}`}>
+          <div className={`grid gap-2 md:gap-4 w-full max-w-7xl mx-auto transition-all duration-500 pt-1 md:pt-2 ${getGridClass()}`}>
             {/* Local Video */}
             <div className="relative aspect-video bg-zinc-800 rounded-xl overflow-hidden group border-2 border-transparent hover:border-primary/50 transition-all shadow-lg">
               <video
@@ -866,126 +993,6 @@ const MeetRoom: React.FC = () => {
                 </div>
               )}
 
-              {activeSidebar === 'participants' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-zinc-400 text-sm font-medium px-2">
-                    <span>In call ({participants.length + 1})</span>
-                  </div>
-                  <div className="space-y-2">
-                    {/* Local User */}
-                    <div className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="w-8 h-8 flex-shrink-0">
-                          <AvatarImage src={user?.photoURL || ''} alt={(user?.displayName || guestName || 'User')} />
-                          <AvatarFallback className="bg-[#3B6EF8] text-white text-[10px] font-bold">
-                            {(user?.displayName?.charAt(0) || guestName?.charAt(0) || 'U')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm font-medium">{(user?.displayName || guestName || 'You')} (You)</span>
-                        {isHost && <span className="ml-1 text-xs text-primary font-bold">(Host)</span>}
-                      </div>
-                      <div className="flex gap-1">
-                        {isMuted && <MicOff className="h-4 w-4 text-destructive" />}
-                        {isHandRaised && <span className="text-xs" title="Your hand is raised">✋</span>}
-                        {isHost && <ShieldCheck className="h-4 w-4 text-primary" />}
-                      </div>
-                    </div>
-                    {isHost && pendingRequests.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between px-2">
-                          <span className="text-xs text-zinc-400">Pending requests</span>
-                          <Button
-                            variant="outline"
-                            size="xs"
-                            className="border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500"
-                            onClick={() => {
-                              pendingRequests.forEach(req => {
-                                socket.emit('approve-join', { sessionId: meetingId!, viewerId: req.viewerId });
-                              });
-                              setPendingRequests([]);
-                            }}
-                          >
-                            Admit all
-                          </Button>
-                        </div>
-                        {pendingRequests.map(req => (
-                          <div key={req.viewerId} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                            <div className="flex items-center gap-3">
-                              <Avatar className="w-8 h-8 flex-shrink-0">
-                                <AvatarFallback className="bg-zinc-700 text-white text-[10px] font-bold">
-                                  {req.name.charAt(0)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="text-sm font-medium">{req.name}</span>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button variant="secondary" size="sm" onClick={() => {
-                                socket.emit('approve-join', { sessionId: meetingId!, viewerId: req.viewerId });
-                                setPendingRequests(prev => prev.filter(p => p.viewerId !== req.viewerId));
-                              }}>Approve</Button>
-                              <Button variant="destructive" size="sm" onClick={() => {
-                                socket.emit('reject-join', { sessionId: meetingId!, viewerId: req.viewerId });
-                                setPendingRequests(prev => prev.filter(p => p.viewerId !== req.viewerId));
-                              }}>Reject</Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {/* Remote Users */}
-                    {participants.map(p => (
-                      <div key={p.id} className="flex flex-col gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="w-8 h-8 flex-shrink-0">
-                              <AvatarFallback className="bg-zinc-700 text-white text-[10px] font-bold">
-                                {p.name.charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm font-medium flex items-center gap-1">
-                              {p.name}
-                              {raisedHands.includes(p.id) && <span className="text-[10px]" title="Hand raised">✋</span>}
-                              {pinnedId === p.id && <span className="text-[10px] text-amber-400 font-semibold">Pinned</span>}
-                            </span>
-                          </div>
-                          {isHost && (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 rounded-full hover:bg-white/10"
-                                onClick={() => socket.emit('targeted-command', { sessionId: meetingId, targetId: p.id, command: 'mute' })}
-                                title="Mute"
-                              >
-                                <MicOff className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-[10px] font-semibold hover:bg-primary/20 text-primary rounded-full"
-                                onClick={() => socket.emit('transfer-host', { sessionId: meetingId, targetId: p.id })}
-                                title="Make this participant the new host"
-                              >
-                                Host
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 rounded-full hover:bg-destructive/20 text-destructive"
-                                onClick={() => socket.emit('targeted-command', { sessionId: meetingId, targetId: p.id, command: 'remove' })}
-                                title="Remove from meeting"
-                              >
-                                <PhoneOff className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {activeSidebar === 'info' && (
                 <div className="space-y-6">
                   <div>
@@ -1031,7 +1038,12 @@ const MeetRoom: React.FC = () => {
       </div>
 
       {/* Bottom Bar */}
-      <div className="min-h-24 md:h-24 px-3 md:px-6 py-2 md:py-0 flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0 bg-[#202124] border-t border-zinc-800/50 relative z-50">
+      <div className="min-h-24 md:h-24 px-2 md:px-6 py-2 md:py-0 flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0 bg-[#202124] border-t border-zinc-800/50 relative z-50">
+        <div className="w-full md:hidden flex items-center justify-center gap-2 text-[11px] text-zinc-400">
+          <span className="text-zinc-300 font-semibold">{meetingId}</span>
+          <span className="text-zinc-600">•</span>
+          {renderNetworkLabel()}
+        </div>
         <div className="flex items-center gap-4 text-sm font-medium hidden md:flex text-zinc-400 w-1/4">
           <div className="flex flex-col">
             <span className="text-white text-base tabular-nums">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -1045,8 +1057,8 @@ const MeetRoom: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:flex-1 justify-center px-1 md:px-0">
-          <div className="w-full md:w-auto flex items-center justify-center flex-wrap md:flex-nowrap gap-2 md:gap-3 bg-zinc-800/40 p-2 rounded-2xl md:rounded-full border border-white/5 backdrop-blur-md">
+        <div className="flex items-center gap-3 w-full md:flex-1 justify-center px-0 md:px-0 overflow-x-auto">
+          <div className="w-max md:w-auto min-w-max flex items-center justify-center flex-nowrap gap-2 md:gap-3 bg-zinc-800/40 p-2 rounded-2xl md:rounded-full border border-white/5 backdrop-blur-md">
             <Button
               variant="ghost"
               size="icon"
