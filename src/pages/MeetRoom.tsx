@@ -95,7 +95,10 @@ const MeetRoom: React.FC = () => {
   const [guestName, setGuestName] = useState('');
   const [hasJoined, setHasJoined] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [leaveIntent, setLeaveIntent] = useState<'leave' | 'end'>('leave');
   const [guestReady, setGuestReady] = useState(false);
   const [waitingApproval, setWaitingApproval] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<PendingJoin[]>([]);
@@ -128,12 +131,19 @@ const MeetRoom: React.FC = () => {
   useEffect(() => {
     socket.on('chat-message', (msg: ChatMessage) => {
       setMessages((prev) => [...prev, msg]);
-      if (activeSidebar !== 'chat') {
+      const isChatVisible = isMobile ? chatOpen : activeSidebar === 'chat';
+      if (!isChatVisible) {
         toast.info(`New message from ${msg.senderName}`, {
           description: msg.message.substring(0, 30) + (msg.message.length > 30 ? "..." : ""),
           action: {
             label: 'View',
-            onClick: () => setActiveSidebar('chat')
+            onClick: () => {
+              if (isMobile) {
+                setChatOpen(true);
+              } else {
+                setActiveSidebar('chat');
+              }
+            }
           },
         });
       }
@@ -151,7 +161,7 @@ const MeetRoom: React.FC = () => {
       socket.off('chat-message');
       socket.off('reaction');
     };
-  }, [activeSidebar]);
+  }, [activeSidebar, isMobile, chatOpen]);
 
   const sendChatMessage = () => {
     if (!chatInput.trim()) return;
@@ -358,7 +368,7 @@ const MeetRoom: React.FC = () => {
           break;
         case 'remove':
           toast.error("You have been removed from the meeting");
-          handleLeave();
+          performLeave();
           break;
         default:
           break;
@@ -620,7 +630,7 @@ const MeetRoom: React.FC = () => {
     }
   };
 
-  const handleLeave = () => {
+  const performLeave = () => {
     if (recorderRef.current && recorderRef.current.state === 'recording') {
       recorderRef.current.stop();
     }
@@ -631,6 +641,22 @@ const MeetRoom: React.FC = () => {
       socket.emit('viewer-left', { sessionId: meetingId, viewerId: socket.id });
     }
     navigate('/meet');
+  };
+
+  const requestLeaveConfirm = (intent: 'leave' | 'end') => {
+    setLeaveIntent(intent);
+    setLeaveConfirmOpen(true);
+  };
+
+  const handleConfirmLeaveAction = () => {
+    if (leaveIntent === 'end') {
+      socket.emit('end-meeting', { sessionId: meetingId });
+      toast.success('Ending meeting for everyone…');
+      setLeaveConfirmOpen(false);
+      return;
+    }
+    performLeave();
+    setLeaveConfirmOpen(false);
   };
 
   const startRecording = () => {
@@ -728,9 +754,66 @@ const MeetRoom: React.FC = () => {
           <span className="text-base md:text-xl font-semibold">Soko Meet</span>
         </div>
         <div className="flex items-center gap-1.5 md:gap-2">
-          <Button variant="ghost" size="icon" className={`rounded-full ${activeSidebar === 'chat' ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`} onClick={() => setActiveSidebar(activeSidebar === 'chat' ? 'none' : 'chat')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`rounded-full ${(isMobile ? chatOpen : activeSidebar === 'chat') ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`}
+            onClick={() => {
+              if (isMobile) {
+                setChatOpen(true);
+              } else {
+                setActiveSidebar(activeSidebar === 'chat' ? 'none' : 'chat');
+              }
+            }}
+          >
             <MessageSquare className="h-4 w-4 md:h-5 md:w-5" />
           </Button>
+          <Dialog open={chatOpen} onOpenChange={setChatOpen}>
+            <DialogContent className="bg-[#202124] border-zinc-800 text-white sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Chat</DialogTitle>
+                <DialogDescription className="text-zinc-400">
+                  Messages in this meeting
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-4 invisible-scrollbar">
+                {messages.length === 0 ? (
+                  <div className="text-center text-zinc-500 mt-10">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                    <p>No messages yet. Say hello!</p>
+                  </div>
+                ) : (
+                  messages.map((m, i) => (
+                    <div key={i} className={`flex flex-col ${m.senderId === (user?.uid || socket.id) ? 'items-end' : 'items-start'}`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-bold text-zinc-400">{m.senderName}</span>
+                        <span className="text-[10px] text-zinc-600">{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <div className={`px-3 py-2 rounded-2xl max-w-[85%] text-sm ${m.senderId === user?.uid ? 'bg-[#3B6EF8] text-white' : 'bg-zinc-800 text-zinc-200'}`}>
+                        {m.message}
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div ref={chatEndRef} />
+              </div>
+              <div className="pt-2 border-t border-zinc-800">
+                <div className="flex items-center gap-2 bg-zinc-800 rounded-full px-4 py-1 border border-zinc-700 focus-within:border-primary/50 transition-colors">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
+                    placeholder="Send a message to everyone"
+                    className="flex-1 bg-transparent border-none outline-none text-sm py-2"
+                  />
+                  <Button variant="ghost" size="icon" onClick={sendChatMessage} className="text-primary hover:bg-transparent">
+                    <MessageSquare className="h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
           <Dialog open={participantsOpen} onOpenChange={setParticipantsOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="icon" className={`rounded-full ${participantsOpen ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`}>
@@ -1180,16 +1263,13 @@ const MeetRoom: React.FC = () => {
                   <DropdownMenuLabel className="text-zinc-400">Leave meeting</DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-zinc-800" />
                   <DropdownMenuItem
-                    onClick={handleLeave}
+                    onClick={() => requestLeaveConfirm('leave')}
                     className="hover:bg-zinc-800 cursor-pointer focus:bg-zinc-800"
                   >
                     <PhoneOff className="mr-2 h-4 w-4" /> Leave the meeting
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => {
-                      socket.emit('end-meeting', { sessionId: meetingId });
-                      toast.success('Ending meeting for everyone…');
-                    }}
+                    onClick={() => requestLeaveConfirm('end')}
                     className="hover:bg-red-900/40 cursor-pointer text-red-400 focus:bg-red-900/40 focus:text-red-400"
                   >
                     <PhoneOff className="mr-2 h-4 w-4" /> End meeting for all
@@ -1201,7 +1281,7 @@ const MeetRoom: React.FC = () => {
                 variant="destructive"
                 size="icon"
                 className="h-10 w-14 md:h-12 md:w-16 rounded-3xl hover:bg-destructive/90 transition-all hover:scale-105"
-                onClick={handleLeave}
+                onClick={() => requestLeaveConfirm('leave')}
               >
                 <PhoneOff className="h-5 w-5" />
               </Button>
@@ -1260,6 +1340,30 @@ const MeetRoom: React.FC = () => {
           </div>
         </div>
       )}
+
+      <Dialog open={leaveConfirmOpen} onOpenChange={setLeaveConfirmOpen}>
+        <DialogContent className="bg-[#202124] border-zinc-800 text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{leaveIntent === 'end' ? 'End meeting for everyone?' : 'Leave this meeting?'}</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              {leaveIntent === 'end'
+                ? 'This will end the meeting for all participants.'
+                : 'You will leave this meeting now.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setLeaveConfirmOpen(false)} className="hover:bg-white/10">
+              Cancel
+            </Button>
+            <Button
+              variant={leaveIntent === 'end' ? 'destructive' : 'secondary'}
+              onClick={handleConfirmLeaveAction}
+            >
+              {leaveIntent === 'end' ? 'End meeting' : 'Leave now'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <style>{`
         @keyframes float-up {
