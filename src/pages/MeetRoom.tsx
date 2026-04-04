@@ -698,10 +698,10 @@ const MeetRoom: React.FC = () => {
   const getGridClass = () => {
     const total = participants.length + 1;
     if (total === 1) return 'grid-cols-1';
-    if (total === 2) return 'grid-cols-1 md:grid-cols-2';
-    if (total <= 4) return 'grid-cols-1 sm:grid-cols-2';
-    if (total <= 6) return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
-    return 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+    if (total === 2) return 'grid-cols-1 sm:grid-cols-2';
+    if (total <= 4) return 'grid-cols-2';
+    if (total <= 6) return 'grid-cols-2 md:grid-cols-3';
+    return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
   };
 
   const pinnedParticipant = pinnedId ? participants.find(p => p.id === pinnedId) : undefined;
@@ -886,7 +886,7 @@ const MeetRoom: React.FC = () => {
       </header>
       {/* Main Grid Area */}
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 p-2 md:p-4 flex items-center justify-center relative overflow-hidden">
+        <div className="flex-1 p-2 md:p-4 relative overflow-hidden">
           {/* Floating Reactions */}
           <div className="absolute inset-0 pointer-events-none z-50 overflow-hidden">
             {reactions.map((r) => (
@@ -904,9 +904,10 @@ const MeetRoom: React.FC = () => {
             ))}
           </div>
 
-          <div className={`grid gap-2 md:gap-4 w-full max-w-7xl mx-auto transition-all duration-500 pt-1 md:pt-2 ${getGridClass()}`}>
+          <div className="w-full h-full overflow-y-auto overflow-x-hidden pr-1 md:pr-2 pb-2">
+            <div className={`grid gap-2 md:gap-4 w-full max-w-7xl mx-auto transition-all duration-500 pt-1 md:pt-2 content-start ${getGridClass()}`}>
             {/* Local Video */}
-            <div className="relative aspect-video bg-zinc-800 rounded-xl overflow-hidden group border-2 border-transparent hover:border-primary/50 transition-all shadow-lg">
+            <div className="relative aspect-[4/3] md:aspect-video bg-zinc-800 rounded-xl overflow-hidden group border-2 border-transparent hover:border-primary/50 transition-all shadow-lg">
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -950,6 +951,7 @@ const MeetRoom: React.FC = () => {
                 onPinToggle={handleTogglePin}
               />
             ))}
+            </div>
           </div>
         </div>
 
@@ -1339,7 +1341,7 @@ const ParticipantVideo: React.FC<ParticipantVideoProps> = ({ participant, isHost
   };
 
   return (
-    <div className="relative aspect-video bg-zinc-800 rounded-xl overflow-hidden group border-2 border-transparent hover:border-primary/50 transition-all">
+    <div className="relative aspect-[4/3] md:aspect-video bg-zinc-800 rounded-xl overflow-hidden group border-2 border-transparent hover:border-primary/50 transition-all">
       <video
         ref={videoRef}
         autoPlay
