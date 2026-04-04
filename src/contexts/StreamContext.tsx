@@ -29,10 +29,20 @@ interface StreamContextState {
 
 const StreamContext = createContext<StreamContextState | undefined>(undefined);
 
-// Initialize Socket.IO connection
 export const socket: Socket = io(STREAM_API_URL, {
-  autoConnect: true
+  autoConnect: false
 });
+
+export const setSocketAuthToken = (token: string | null) => {
+  socket.auth = token ? { token } : {};
+};
+
+export const reconnectSocket = () => {
+  if (socket.connected) {
+    socket.disconnect();
+  }
+  socket.connect();
+};
 
 export const useStream = () => {
   const context = useContext(StreamContext);
@@ -60,6 +70,12 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const streamRef = useRef<MediaStream | null>(null);
   const viewersRef = useRef<Viewer[]>([]);
   const readyViewersRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!socket.connected) {
+      socket.connect();
+    }
+  }, []);
 
   const createPeer = useCallback((viewer: Viewer) => {
     if (!session) return;

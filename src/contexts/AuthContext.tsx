@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { User, signInWithPopup, signOut, onIdTokenChanged } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
+import { reconnectSocket, setSocketAuthToken } from './StreamContext';
 
 interface AuthContextType {
   user: User | null;
@@ -16,8 +17,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onIdTokenChanged(auth, async (nextUser) => {
+      setUser(nextUser);
+      try {
+        const token = nextUser ? await nextUser.getIdToken() : null;
+        setSocketAuthToken(token);
+      } catch {
+        setSocketAuthToken(null);
+      }
+      reconnectSocket();
       setLoading(false);
     });
     

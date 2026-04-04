@@ -304,7 +304,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Plus, LogOut, Settings, HelpCircle, MessageSquare,
-  Loader2, Shield, Zap, Users, Video, Link2, Calendar
+  Loader2, Shield, Zap, Users, Video, Link2, Calendar, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
@@ -336,6 +336,7 @@ const MeetDashboard: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [userMeetings, setUserMeetings] = useState<any[]>([]);
   const [restartingId, setRestartingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(10);
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -397,7 +398,7 @@ const MeetDashboard: React.FC = () => {
     const id = Math.random().toString(36).substring(2, 12);
     try {
       await api.createMeeting({
-        id, hostId: user.uid,
+        id,
         hostName: user.displayName || 'Anonymous',
         title: `${user.displayName}'s Meeting`,
       });
@@ -416,7 +417,7 @@ const MeetDashboard: React.FC = () => {
     if (!user) return;
     setRestartingId(meetingId);
     try {
-      await api.restartMeeting(meetingId, user.uid);
+      await api.restartMeeting(meetingId);
       toast.success('Meeting restarted. Joining…');
       navigate(`/meet/${meetingId}`);
     } catch (e) {
@@ -424,6 +425,30 @@ const MeetDashboard: React.FC = () => {
     } finally {
       setRestartingId(null);
     }
+  };
+
+  const executeDeleteMeeting = async (meetingId: string) => {
+    setDeletingId(meetingId);
+    try {
+      await api.deleteMeeting(meetingId);
+      setUserMeetings(prev => prev.filter(m => m.id !== meetingId));
+      toast.success('Meeting deleted');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to delete meeting');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteMeeting = (meetingId: string, meetingTitle?: string) => {
+    toast.warning(`Delete "${meetingTitle || meetingId}"?`, {
+      description: 'This action is permanent and cannot be undone.',
+      action: {
+        label: 'Delete',
+        onClick: () => executeDeleteMeeting(meetingId),
+      },
+      cancel: 'Cancel',
+    });
   };
 
   /* ── shared font style ── */
@@ -655,25 +680,36 @@ const MeetDashboard: React.FC = () => {
                         <span className="text-[10px] text-[#4B5563]">{new Date(m.createdAt || 0).toLocaleDateString()}</span>
                       </div>
                       {isEnded && <span className="text-[10px] text-amber-500/90 font-medium">Ended</span>}
-                      <div className="flex items-center justify-between mt-4">
+                      <div className="flex items-center justify-between mt-4 gap-2">
                         <code className="text-xs text-[#3B6EF8] bg-[#3B6EF8]/10 px-2 py-1 rounded-lg">{m.id}</code>
-                        {isEnded && isHost ? (
-                          <button 
-                            onClick={() => handleRestartMeeting(m.id)}
-                            disabled={restartingId === m.id}
-                            className="text-xs font-bold text-white bg-[#3B6EF8] hover:bg-[#2E56C9] px-4 py-1.5 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5">
-                            {restartingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                            Start again
+                        <div className="flex items-center gap-2">
+                          {isEnded && isHost ? (
+                            <button 
+                              onClick={() => handleRestartMeeting(m.id)}
+                              disabled={restartingId === m.id || deletingId === m.id}
+                              className="text-xs font-bold text-white bg-[#3B6EF8] hover:bg-[#2E56C9] px-4 py-1.5 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5">
+                              {restartingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                              Start again
+                            </button>
+                          ) : isEnded ? (
+                            <span className="text-[10px] text-[#4B5563]">Ended</span>
+                          ) : (
+                            <button 
+                              onClick={() => navigate(`/meet/${m.id}`)}
+                              disabled={deletingId === m.id}
+                              className="text-xs font-bold text-white bg-white/[0.05] hover:bg-[#3B6EF8] px-4 py-1.5 rounded-xl transition-all disabled:opacity-50">
+                              Join
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteMeeting(m.id, m.title)}
+                            disabled={deletingId === m.id || restartingId === m.id}
+                            className="h-8 w-8 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                            title="Delete meeting"
+                          >
+                            {deletingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                           </button>
-                        ) : isEnded ? (
-                          <span className="text-[10px] text-[#4B5563]">Ended</span>
-                        ) : (
-                          <button 
-                            onClick={() => navigate(`/meet/${m.id}`)}
-                            className="text-xs font-bold text-white bg-white/[0.05] hover:bg-[#3B6EF8] px-4 py-1.5 rounded-xl transition-all">
-                            Join
-                          </button>
-                        )}
+                        </div>
                       </div>
                     </div>
                   );

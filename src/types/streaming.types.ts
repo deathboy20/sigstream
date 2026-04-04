@@ -23,6 +23,7 @@ export interface Viewer {
   name: string;
   status: 'connected' | 'reconnecting' | 'disconnected' | 'waiting' | 'approved' | 'rejected';
   joinedAt: Date;
+  joinToken?: string;
   connectionQuality?: 'excellent' | 'good' | 'poor'; // Made optional as backend doesn't send it initially
 }
 

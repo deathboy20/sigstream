@@ -1,138 +1,193 @@
 import { STREAM_API_URL } from '../config';
+import { auth } from './firebase';
+import { Session, Viewer } from '../types/streaming.types';
 
 const API_URL = `${STREAM_API_URL}/api`;
 
+type ApiRequestOptions = RequestInit & {
+  requiresAuth?: boolean;
+};
+
+type HealthResponse = {
+  status: string;
+  endpoints?: string[];
+};
+
+type MeetingRecord = {
+  id: string;
+  hostId: string;
+  hostName: string;
+  title?: string;
+  isActive?: boolean;
+  participants?: Array<{ id: string; name: string; role?: string }>;
+  [key: string]: unknown;
+};
+
+type MeetingPublicRecord = {
+  id: string;
+  title: string;
+  hostName: string;
+  isActive: boolean;
+  createdAt: number | null;
+  scheduledAt: number | null;
+};
+
+const getAuthToken = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    return null;
+  }
+  return user.getIdToken();
+};
+
+const request = async <T>(path: string, options: ApiRequestOptions = {}): Promise<T> => {
+  const { requiresAuth = false, headers, ...fetchOptions } = options;
+  const mergedHeaders = new Headers(headers);
+
+  if (requiresAuth) {
+    const token = await getAuthToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+    mergedHeaders.set('Authorization', `Bearer ${token}`);
+    mergedHeaders.set('x-firebase-token', token);
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...fetchOptions,
+    headers: mergedHeaders,
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => ({} as { error?: string; message?: string }));
+    const errorMessage =
+      (errorPayload as { error?: string; message?: string }).error ||
+      (errorPayload as { error?: string; message?: string }).message ||
+      `Request failed (${response.status})`;
+    throw new Error(errorMessage);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
+};
+
 export const api = {
-  createSession: async () => {
-    const response = await fetch(`${API_URL}/sessions`, {
+  createSession: async (): Promise<Session> => {
+    return request<Session>('/sessions', {
       method: 'POST',
+      requiresAuth: true,
     });
-    return response.json();
   },
 
-  getSession: async (sessionId: string) => {
-    const response = await fetch(`${API_URL}/sessions/${sessionId}`);
-    if (!response.ok) throw new Error('Session not found');
-    return response.json();
+  getSession: async (sessionId: string): Promise<Session> => {
+    return request<Session>(`/sessions/${sessionId}`);
   },
 
-  endSession: async (sessionId: string) => {
-    await fetch(`${API_URL}/sessions/${sessionId}`, {
+  endSession: async (sessionId: string): Promise<{ message: string }> => {
+    return request<{ message: string }>(`/sessions/${sessionId}`, {
       method: 'DELETE',
+      requiresAuth: true,
     });
   },
 
-  getViewers: async (sessionId: string) => {
-    const response = await fetch(`${API_URL}/sessions/${sessionId}/viewers`);
-    return response.json();
+  getViewers: async (sessionId: string): Promise<Record<string, Viewer>> => {
+    return request<Record<string, Viewer>>(`/sessions/${sessionId}/viewers`);
   },
 
-  requestJoin: async (sessionId: string, name: string) => {
-    const response = await fetch(`${API_URL}/sessions/${sessionId}/request`, {
+  requestJoin: async (sessionId: string, name: string): Promise<Viewer> => {
+    return request<Viewer>(`/sessions/${sessionId}/request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to join');
-    }
-    return response.json();
   },
 
-  approveViewer: async (sessionId: string, viewerId: string) => {
-    await fetch(`${API_URL}/sessions/${sessionId}/approve`, {
+  approveViewer: async (sessionId: string, viewerId: string): Promise<{ message: string }> => {
+    return request<{ message: string }>(`/sessions/${sessionId}/approve`, {
       method: 'POST',
+      requiresAuth: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ viewerId }),
     });
   },
 
-  rejectViewer: async (sessionId: string, viewerId: string) => {
-    await fetch(`${API_URL}/sessions/${sessionId}/reject`, {
+  rejectViewer: async (sessionId: string, viewerId: string): Promise<{ message: string }> => {
+    return request<{ message: string }>(`/sessions/${sessionId}/reject`, {
       method: 'POST',
+      requiresAuth: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ viewerId }),
     });
   },
 
-  setAdmissionMode: async (sessionId: string, mode: 'auto' | 'manual') => {
-    const response = await fetch(`${API_URL}/sessions/${sessionId}/admission`, {
+  setAdmissionMode: async (sessionId: string, mode: 'auto' | 'manual'): Promise<{ message: string; mode: 'auto' | 'manual' }> => {
+    return request<{ message: string; mode: 'auto' | 'manual' }>(`/sessions/${sessionId}/admission`, {
       method: 'POST',
+      requiresAuth: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode }),
     });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Failed to update admission mode');
-    }
-    return response.json();
   },
 
-  removeViewer: async (sessionId: string, viewerId: string) => {
-    await fetch(`${API_URL}/sessions/${sessionId}/viewers/${viewerId}`, {
+  removeViewer: async (sessionId: string, viewerId: string): Promise<{ message: string }> => {
+    return request<{ message: string }>(`/sessions/${sessionId}/viewers/${viewerId}`, {
       method: 'DELETE',
+      requiresAuth: true,
     });
   },
-  
-  healthCheck: async () => {
-      const response = await fetch(`${API_URL}/health`);
-      return response.json();
+
+  healthCheck: async (): Promise<HealthResponse> => {
+    return request<HealthResponse>('/health');
   },
 
-  deleteSession: async (id: string) => {
-    const response = await fetch(`${API_URL}/sessions/${id}`, {
+  deleteSession: async (id: string): Promise<{ message: string }> => {
+    return request<{ message: string }>(`/sessions/${id}`, {
       method: 'DELETE',
+      requiresAuth: true,
     });
-    return response.json();
   },
 
-  // --- Meetings API ---
-  createMeeting: async (meetingData: { id: string, hostId: string, hostName: string, title?: string }) => {
-    const response = await fetch(`${API_URL}/meetings`, {
+  createMeeting: async (meetingData: { id: string; hostName: string; title?: string; scheduledAt?: number; orgName?: string; team?: string; userType?: string }): Promise<MeetingRecord> => {
+    return request<MeetingRecord>('/meetings', {
       method: 'POST',
+      requiresAuth: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(meetingData),
     });
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Error creating meeting (${response.status}):`, errorText);
-      throw new Error(`Failed to create meeting: ${response.status}`);
-    }
-    return response.json();
   },
 
-  getMeeting: async (id: string) => {
-    const response = await fetch(`${API_URL}/meetings/${id}`);
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Error getting meeting (${response.status}):`, errorText);
-      throw new Error(`Meeting not found: ${response.status}`);
-    }
-    return response.json();
-  },
-
-  listUserMeetings: async (userId: string) => {
-    const response = await fetch(`${API_URL}/meetings/user/${userId}`);
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Error fetching meetings (${response.status}):`, errorText);
-      throw new Error(`Failed to fetch meetings: ${response.status}`);
-    }
-    return response.json();
-  },
-
-  /** Restart an ended meeting (host only). Reuses the same meeting ID. */
-  restartMeeting: async (meetingId: string, userId: string) => {
-    const response = await fetch(`${API_URL}/meetings/${meetingId}/restart`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
+  getMeeting: async (id: string): Promise<MeetingRecord> => {
+    return request<MeetingRecord>(`/meetings/${id}`, {
+      requiresAuth: true,
     });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error((err as { error?: string }).error || 'Failed to restart meeting');
-    }
-    return response.json();
+  },
+
+  getMeetingPublic: async (id: string): Promise<MeetingPublicRecord> => {
+    return request<MeetingPublicRecord>(`/meetings/${id}/public`);
+  },
+
+  listUserMeetings: async (userId: string): Promise<MeetingRecord[]> => {
+    return request<MeetingRecord[]>(`/meetings/user/${userId}`, {
+      requiresAuth: true,
+    });
+  },
+
+  restartMeeting: async (meetingId: string): Promise<MeetingRecord> => {
+    return request<MeetingRecord>(`/meetings/${meetingId}/restart`, {
+      method: 'POST',
+      requiresAuth: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+  },
+
+  deleteMeeting: async (meetingId: string): Promise<{ message: string }> => {
+    return request<{ message: string }>(`/meetings/${meetingId}`, {
+      method: 'DELETE',
+      requiresAuth: true,
+    });
   },
 };

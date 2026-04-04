@@ -30,6 +30,12 @@ const ViewerPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerRef = useRef<SimplePeer.Instance | null>(null);
 
+  useEffect(() => {
+    if (!socket.connected) {
+      socket.connect();
+    }
+  }, []);
+
   const showSessionEnded = useCallback((message?: string) => {
     if (message) {
       setEndDialogMessage(message);
@@ -108,9 +114,12 @@ const ViewerPage: React.FC = () => {
         setViewer(newViewer);
         setViewerState(newViewer.status === 'approved' ? 'watching' : 'waiting');
         
-        // Join Socket Room
         socket.emit('join-session', sessionId);
-        socket.emit('join-user', newViewer.id);
+        socket.emit('join-user', {
+          sessionId,
+          viewerId: newViewer.id,
+          joinToken: newViewer.joinToken
+        });
 
     } catch (err) {
         setError('Failed to submit join request');
@@ -137,7 +146,11 @@ const ViewerPage: React.FC = () => {
     const joinRooms = () => {
         console.log('Joining rooms for viewer:', viewer.id);
         socket.emit('join-session', sessionId);
-        socket.emit('join-user', viewer.id);
+        socket.emit('join-user', {
+          sessionId,
+          viewerId: viewer.id,
+          joinToken: viewer.joinToken
+        });
     };
 
     if (socket.connected) {

@@ -42,7 +42,7 @@ interface Participant {
 
 interface MeetingData {
   id: string;
-  hostId: string;
+  hostId?: string;
   hostName: string;
   title?: string;
 }
@@ -111,6 +111,12 @@ const MeetRoom: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    if (!socket.connected) {
+      socket.connect();
+    }
+  }, []);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -194,9 +200,9 @@ const MeetRoom: React.FC = () => {
   useEffect(() => {
     const fetchMeeting = async () => {
       try {
-        const data = await api.getMeeting(meetingId!);
+        const data = user ? await api.getMeeting(meetingId!) : await api.getMeetingPublic(meetingId!);
         setMeetingData(data);
-        if (user && data.hostId === user.uid) {
+        if (user && 'hostId' in data && data.hostId === user.uid) {
           setIsHost(true);
         }
       } catch (err) {
@@ -206,7 +212,7 @@ const MeetRoom: React.FC = () => {
       }
     };
     fetchMeeting();
-  }, [meetingId, user]);
+  }, [meetingId, user, navigate]);
 
   useEffect(() => {
     const canJoin = !!meetingId && !hasJoined && (!!user || guestReady);
