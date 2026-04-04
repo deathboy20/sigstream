@@ -697,11 +697,11 @@ const MeetRoom: React.FC = () => {
   // Determine grid columns based on participant count
   const getGridClass = () => {
     const total = participants.length + 1;
-    if (total === 1) return 'grid-cols-1';
-    if (total === 2) return 'grid-cols-1 sm:grid-cols-2';
-    if (total <= 4) return 'grid-cols-2';
-    if (total <= 6) return 'grid-cols-2 md:grid-cols-3';
-    return 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+    if (total === 1) return 'md:grid-cols-1';
+    if (total === 2) return 'md:grid-cols-2';
+    if (total <= 4) return 'md:grid-cols-2';
+    if (total <= 6) return 'md:grid-cols-3';
+    return 'md:grid-cols-3 lg:grid-cols-4';
   };
 
   const pinnedParticipant = pinnedId ? participants.find(p => p.id === pinnedId) : undefined;
@@ -744,7 +744,7 @@ const MeetRoom: React.FC = () => {
                   In call ({participants.length + 1})
                 </DialogDescription>
               </DialogHeader>
-              <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-4">
+              <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-4 invisible-scrollbar">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
                     <div className="flex items-center gap-3">
@@ -904,8 +904,8 @@ const MeetRoom: React.FC = () => {
             ))}
           </div>
 
-          <div className="w-full h-full overflow-y-auto overflow-x-hidden pr-1 md:pr-2 pb-2">
-            <div className={`grid gap-2 md:gap-4 w-full max-w-7xl mx-auto transition-all duration-500 pt-1 md:pt-2 content-start ${getGridClass()}`}>
+          <div className="w-full h-full overflow-y-auto overflow-x-hidden pr-1 md:pr-2 pb-2 invisible-scrollbar">
+            <div className={`grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2 md:gap-4 w-full max-w-7xl mx-auto transition-all duration-500 pt-1 md:pt-2 content-start ${getGridClass()}`}>
             {/* Local Video */}
             <div className="relative aspect-[4/3] md:aspect-video bg-zinc-800 rounded-xl overflow-hidden group border-2 border-transparent hover:border-primary/50 transition-all shadow-lg">
               <video
@@ -968,7 +968,7 @@ const MeetRoom: React.FC = () => {
               </Button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 invisible-scrollbar">
               {activeSidebar === 'chat' && (
                 <div className="flex flex-col h-full">
                   <div className="flex-1 space-y-4">
@@ -1059,7 +1059,7 @@ const MeetRoom: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:flex-1 justify-center px-0 md:px-0 overflow-x-auto">
+        <div className="flex items-center gap-3 w-full md:flex-1 justify-center px-0 md:px-0 overflow-x-auto invisible-scrollbar">
           <div className="w-max md:w-auto min-w-max flex items-center justify-center flex-nowrap gap-2 md:gap-3 bg-zinc-800/40 p-2 rounded-2xl md:rounded-full border border-white/5 backdrop-blur-md">
             <Button
               variant="ghost"
@@ -1269,6 +1269,15 @@ const MeetRoom: React.FC = () => {
         }
         .animate-bounce-up {
           animation: float-up 3s ease-out forwards;
+        }
+        .invisible-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .invisible-scrollbar::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          background: transparent;
         }
       `}</style>
     </div>
