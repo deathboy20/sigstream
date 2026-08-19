@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, getDocs, query, where } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Lock, User, Map as MapIcon, ChevronRight, AlertCircle, Check, Loader2, Sun, Moon, KeyRound } from 'lucide-react';
 import SplashScreen from '../components/SplashScreen';
 import { useTheme } from '../context/ThemeContext';
-import { useAuth } from '../contexts/AuthContext';
+import { markMeetOrgReady, useAuth } from '../contexts/AuthContext';
 import { db } from '../services/firebase';
 import { CONFIG_COLLECTION, FEATURE_ACCESS_LOGIN_COLLECTION, TEAMS_COLLECTION } from '../config/collections';
 import type { ConfigLevel, ParsedConfig } from '../types/org';
@@ -105,7 +105,7 @@ function GoogleMark() {
 
 const LoginPage: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
-  const { user, loginWithGoogle, orgReady } = useAuth();
+  const { user, loading: authLoading, loginWithGoogle, orgReady } = useAuth();
   const navigate = useNavigate();
   const [organization, setOrganization] = useState('');
   const [adminLevel, setAdminLevel] = useState('');
@@ -132,14 +132,26 @@ const LoginPage: React.FC = () => {
   const [teams, setTeams] = useState<OrgTeam[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
 
+  const redirectedRef = useRef(false);
+
   useEffect(() => {
-    if (orgReady) navigate('/meet', { replace: true });
-  }, [orgReady, navigate]);
+    if (redirectedRef.current || showSplash || authLoading) return;
+    if (user && orgReady) {
+      redirectedRef.current = true;
+      navigate('/meet', { replace: true });
+    }
+  }, [authLoading, showSplash, user, orgReady, navigate]);
 
   const finishLogin = () => {
-    window.dispatchEvent(new Event('sigstream-org-auth'));
+    markMeetOrgReady();
     setShowSplash(true);
-    window.setTimeout(() => navigate('/meet'), 800);
+    window.setTimeout(() => navigate('/meet', { replace: true }), 800);
+  };
+
+  const persistMeetCredentials = (creds: Record<string, unknown>) => {
+    const raw = JSON.stringify(creds);
+    sessionStorage.setItem('userCredentials', raw);
+    localStorage.setItem('userCredentials', raw);
   };
 
   const syncLoginStepFromSession = useCallback(() => {
@@ -362,7 +374,7 @@ const LoginPage: React.FC = () => {
         }
         sessionStorage.setItem('userAuth', 'true');
         sessionStorage.setItem('userType', loginType);
-        sessionStorage.setItem('userCredentials', JSON.stringify({
+        persistMeetCredentials({
           organization: organization.trim(),
           organizationDocId: orgDocId || localStorage.getItem('organizationDocId') || undefined,
           adminLevel: adminLevel.trim(),
@@ -372,7 +384,7 @@ const LoginPage: React.FC = () => {
           team: null,
           loginAccess: orgLoginAccess,
           loginTime: new Date().toISOString(),
-        }));
+        });
         persistOrgLoginAccess(orgLoginAccess);
         finishLogin();
       } else {
@@ -395,7 +407,7 @@ const LoginPage: React.FC = () => {
         }
         sessionStorage.setItem('userAuth', 'true');
         sessionStorage.setItem('userType', 'team');
-        sessionStorage.setItem('userCredentials', JSON.stringify({
+        persistMeetCredentials({
           organization: organization.trim(),
           organizationDocId: orgDocId || localStorage.getItem('organizationDocId') || undefined,
           adminLevel: adminLevel.trim(),
@@ -405,7 +417,7 @@ const LoginPage: React.FC = () => {
           teamName: candidateTeam.name,
           loginAccess: orgLoginAccess,
           loginTime: new Date().toISOString(),
-        }));
+        });
         persistOrgLoginAccess(orgLoginAccess);
         if (requiresPersonnelFeatureLogin(orgLoginAccess, 'team')) {
           setLoginStep(3);
@@ -618,10 +630,12 @@ const LoginPage: React.FC = () => {
 
                       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
                         <div className="space-y-1.5">
-                          <label className={labelClass}>Organization</label>
+                          <label htmlFor="org-name" className={labelClass}>Organization</label>
                           <div className="relative">
                             <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                             <input
+                              id="org-name"
+                              name="organization"
                               type="text"
                               required
                               value={organization}
@@ -651,10 +665,12 @@ const LoginPage: React.FC = () => {
 
                         {orgExists && (
                           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-1.5">
-                            <label className={labelClass}>Access level</label>
+                            <label htmlFor="org-level" className={labelClass}>Access level</label>
                             <div className="relative">
                               <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                               <select
+                                id="org-level"
+                                name="adminLevel"
                                 required
                                 value={adminLevel}
                                 onChange={(e) => setAdminLevel(e.target.value)}
@@ -691,10 +707,12 @@ const LoginPage: React.FC = () => {
 
                         {loginType === 'team' && (
                           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-1.5">
-                            <label className={labelClass}>Field team</label>
+                            <label htmlFor="org-team" className={labelClass}>Field team</label>
                             <div className="relative">
                               <MapIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                               <select
+                                id="org-team"
+                                name="team"
                                 required
                                 value={team}
                                 onChange={(e) => setTeam(e.target.value)}
@@ -714,12 +732,15 @@ const LoginPage: React.FC = () => {
                         )}
 
                         <div className="space-y-1.5">
-                          <label className={labelClass}>Passcode</label>
+                          <label htmlFor="org-passcode" className={labelClass}>Passcode</label>
                           <div className="relative">
                             <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                             <input
+                              id="org-passcode"
+                              name="password"
                               type={showPassword ? 'text' : 'password'}
                               required
+                              autoComplete="current-password"
                               value={password}
                               onChange={(e) => setPassword(e.target.value)}
                               className={`${inputBase} pl-10 pr-11 py-3 border-slate-200 dark:border-slate-700`}
@@ -773,10 +794,12 @@ const LoginPage: React.FC = () => {
                       {error && <ErrorBanner message={error} />}
                       <form onSubmit={(e) => void handleFeatureAccessSubmit(e)} className="space-y-4">
                         <div className="space-y-1.5">
-                          <label className={labelClass}>Username</label>
+                          <label htmlFor="feature-username" className={labelClass}>Username</label>
                           <div className="relative">
                             <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                             <input
+                              id="feature-username"
+                              name="username"
                               type="text"
                               required
                               value={featureUsername}
@@ -788,10 +811,12 @@ const LoginPage: React.FC = () => {
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className={labelClass}>Password</label>
+                          <label htmlFor="feature-password" className={labelClass}>Password</label>
                           <div className="relative">
                             <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                             <input
+                              id="feature-password"
+                              name="featurePassword"
                               type={showFeaturePassword ? 'text' : 'password'}
                               required
                               value={featurePassword}

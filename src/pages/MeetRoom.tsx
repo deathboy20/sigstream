@@ -38,7 +38,7 @@ import {
 } from '../components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { api } from '../services/api';
-import { socket } from '../contexts/StreamContext';
+import { socket } from '../lib/meetSocket';
 import { useIsMobile } from '../hooks/use-mobile';
 import SimplePeer from 'simple-peer';
 import QRCode from 'react-qr-code';
@@ -48,6 +48,7 @@ import MeetChatPanel from '../components/MeetChatPanel';
 import { MeetErrorBoundary } from '../components/MeetErrorBoundary';
 import { MeetWaitingRoom } from '../components/MeetWaitingRoom';
 import { useMeetingPip } from '../hooks/useMeetingPip';
+import { IS_STANDALONE } from '../config';
 import {
   applySenderBitrate,
   audioConstraints,
@@ -601,31 +602,14 @@ const MeetRoom: React.FC = () => {
   }, [localStream]);
 
   useEffect(() => {
-    const syncSocketAuth = async () => {
+    const start = async () => {
       const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
-      const currentToken = typeof (socket.auth as { token?: string })?.token === 'string'
-        ? (socket.auth as { token?: string }).token
-        : null;
       socket.auth = token ? { token } : {};
-
-      if (!socket.connected) {
-        socket.connect();
-        return;
-      }
-
-      if (currentToken !== token) {
-        socket.disconnect();
-        socket.connect();
-      }
+      if (!socket.connected) socket.connect();
     };
-
-    syncSocketAuth();
-    const unsubscribe = auth.onAuthStateChanged(() => {
-      syncSocketAuth();
-    });
-
+    void start();
     return () => {
-      unsubscribe();
+      if (socket.connected) socket.disconnect();
     };
   }, []);
 
@@ -679,7 +663,7 @@ const MeetRoom: React.FC = () => {
             console.warn('Could not access camera/microphone, joining without media:', mediaError);
             toast.info('Joined meeting without camera/microphone. You can still see and hear others.');
           }
-          socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined });
+          socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
         } else {
           socket.emit('join-request', { sessionId: meetingId!, name: guestName.trim() });
           setWaitingApproval(true);
@@ -890,7 +874,7 @@ const MeetRoom: React.FC = () => {
       if (user && meetingData?.hostId === user.uid) setIsHost(true);
       return;
     }
-    socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || guestName || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined });
+    socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || guestName || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
     if (meetingData?.hostId === user.uid) setIsHost(true);
   }, [user, meetingId, hasJoined, meetingData?.hostId, guestName]);
 
@@ -1052,7 +1036,7 @@ const MeetRoom: React.FC = () => {
       if (!meetingId || !(user || guestReady) || !hasJoinedRef.current) return;
       toast.success('Reconnected to meeting');
       if (user) {
-        socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || guestNameRef.current || guestName.trim() || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined });
+        socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || guestNameRef.current || guestName.trim() || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
         if (meetingData?.hostId === user.uid) setIsHost(true);
       } else {
         socket.emit('join-session', { sessionId: meetingId, name: guestNameRef.current || guestName.trim() || 'Guest' });
@@ -1591,20 +1575,22 @@ const MeetRoom: React.FC = () => {
   return (
     <div className="h-[100dvh] bg-[#202124] flex flex-col text-white overflow-hidden font-sans">
       <header className="px-2 sm:px-4 py-2 border-b border-zinc-800/50 flex items-center justify-between gap-2 sticky top-0 bg-[#202124]/80 backdrop-blur-md z-50">
-        <div className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0" onClick={() => navigate('/')}>
+        <div className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0" onClick={() => navigate(IS_STANDALONE ? '/meet' : '/teleconference/meet')}>
           <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-8 w-auto" />
           <span className="text-base sm:text-xl font-semibold truncate">Soko Meet</span>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {!IS_STANDALONE && (
           <Button
             variant="outline"
             size="sm"
             className="h-8 rounded-lg border-white/15 bg-white/5 text-white hover:bg-white/10 px-2 sm:px-3"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/dashboard')}
           >
             <ArrowLeft className="h-4 w-4 sm:mr-1.5" />
             <span className="hidden sm:inline">Back to Dashboard</span>
           </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -1636,6 +1622,7 @@ const MeetRoom: React.FC = () => {
               <div className="h-[60dvh] min-h-0">
                 <MeetChatPanel
                   meetingId={meetingId!}
+                  enableHistory
                   messages={messages.map((m) => ({
                     id: m.id || `${m.timestamp}-${m.senderId}`,
                     meetingId: meetingId!,
@@ -1950,6 +1937,7 @@ const MeetRoom: React.FC = () => {
               {activeSidebar === 'chat' && (
                 <MeetChatPanel
                   meetingId={meetingId!}
+                  enableHistory
                   messages={messages.map((m) => ({
                     id: m.id || `${m.timestamp}-${m.senderId}`,
                     meetingId: meetingId!,

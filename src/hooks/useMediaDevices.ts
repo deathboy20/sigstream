@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { MediaDevice, SelectedDevices } from '../types/streaming.types';
+import { readMeetDevicePrefs, writeMeetDevicePrefs } from '../lib/meetDevicePrefs';
 
 export const useMediaDevices = () => {
   const [devices, setDevices] = useState<MediaDevice[]>([]);
-  const [selectedDevices, setSelectedDevices] = useState<SelectedDevices>({
-    videoDeviceId: null,
-    audioDeviceId: null,
-  });
+  const [selectedDevices, setSelectedDevices] = useState<SelectedDevices>(() => readMeetDevicePrefs());
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -146,6 +144,7 @@ export const useMediaDevices = () => {
         [type === 'video' ? 'videoDeviceId' : 'audioDeviceId']: deviceId,
       };
       selectedRef.current = next;
+      writeMeetDevicePrefs(next);
       return next;
     });
   }, []);

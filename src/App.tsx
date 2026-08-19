@@ -17,16 +17,18 @@ import NotFound from './pages/NotFound';
 
 const queryClient = new QueryClient();
 
+const AuthLoading: React.FC = () => (
+  <div className="min-h-screen bg-slate-50 text-slate-600 dark:bg-[#070B14] dark:text-slate-300 flex items-center justify-center">
+    Loading…
+  </div>
+);
+
 const RequireMeetAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading, orgReady } = useAuth();
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#070B14] text-white flex items-center justify-center">
-        Loading…
-      </div>
-    );
-  }
-  if (!user || !orgReady) return <Navigate to="/login" replace />;
+  const { loading, orgReady } = useAuth();
+  if (loading) return <AuthLoading />;
+  // Org session is the gate. Requiring Firebase `user` here bounced /meet ↔ /login
+  // on every token flicker until Chrome throttled navigation.
+  if (!orgReady) return <Navigate to="/login" replace />;
   return <>{children}</>;
 };
 

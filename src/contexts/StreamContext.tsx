@@ -3,8 +3,7 @@ import { Session, Viewer, StreamState } from '../types/streaming.types';
 import { api } from '../services/api';
 import SimplePeer from 'simple-peer';
 import { toast } from 'sonner';
-import { io, Socket } from 'socket.io-client';
-import { STREAM_API_URL } from '../config';
+import { socket } from '../lib/meetSocket';
 
 interface StreamContextState {
   session: Session | null;
@@ -28,21 +27,6 @@ interface StreamContextState {
 }
 
 const StreamContext = createContext<StreamContextState | undefined>(undefined);
-
-export const socket: Socket = io(STREAM_API_URL, {
-  autoConnect: false
-});
-
-export const setSocketAuthToken = (token: string | null) => {
-  socket.auth = token ? { token } : {};
-};
-
-export const reconnectSocket = () => {
-  if (socket.connected) {
-    socket.disconnect();
-  }
-  socket.connect();
-};
 
 export const useStream = () => {
   const context = useContext(StreamContext);

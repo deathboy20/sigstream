@@ -14,7 +14,7 @@ const MeetAdminMonitor: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessageDoc[]>([]);
 
   useEffect(() => {
-    api.listAccessibleMeetings()
+    api.listAccessibleMeetings({ forMonitor: 'true' })
       .then((list) => {
         const active = list.filter((m) => m.status === 'active' || m.isActive);
         setMeetings(active);

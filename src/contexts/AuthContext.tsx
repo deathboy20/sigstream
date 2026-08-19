@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { User, signInWithPopup, signOut, onIdTokenChanged } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
-import { reconnectSocket, setSocketAuthToken } from './StreamContext';
+import { disconnectMeetSocket } from '../lib/meetSocket';
+import { requiresPersonnelFeatureLogin, isFeatureAccessAuthenticated } from '../util/orgLoginAccess';
 
 interface AuthContextType {
   user: User | null;
@@ -13,15 +14,27 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-import { requiresPersonnelFeatureLogin, isFeatureAccessAuthenticated } from '../util/orgLoginAccess';
+const MEET_ORG_READY_KEY = 'meetOrgReady';
 
-const readOrgReady = () => {
+const readStoredCredentials = () => {
+  if (typeof window === 'undefined') return null;
+  return sessionStorage.getItem('userCredentials') || localStorage.getItem('userCredentials');
+};
+
+export const readOrgReady = () => {
   if (typeof window === 'undefined') return false;
-  const userAuth = sessionStorage.getItem('userAuth') === 'true' && !!sessionStorage.getItem('userCredentials');
-  if (!userAuth) return false;
+  const creds = readStoredCredentials();
+  if (sessionStorage.getItem('userAuth') !== 'true' || !creds) return false;
+  if (sessionStorage.getItem(MEET_ORG_READY_KEY) === 'true') return true;
   const userType = sessionStorage.getItem('userType');
   if (!requiresPersonnelFeatureLogin(undefined, userType)) return true;
   return isFeatureAccessAuthenticated();
+};
+
+export const markMeetOrgReady = () => {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(MEET_ORG_READY_KEY, 'true');
+  window.dispatchEvent(new Event('sigstream-org-auth'));
 };
 
 const clearOrgSession = () => {
@@ -32,30 +45,67 @@ const clearOrgSession = () => {
   sessionStorage.removeItem('googleUser');
   sessionStorage.removeItem('featureAccessAuth');
   sessionStorage.removeItem('featureAccessUser');
+  sessionStorage.removeItem(MEET_ORG_READY_KEY);
+  localStorage.removeItem('userCredentials');
+  localStorage.removeItem('organizationDocId');
+  localStorage.removeItem('organizationConfig');
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [orgReady, setOrgReady] = useState(readOrgReady);
+  const [orgReady, setOrgReady] = useState(() => readOrgReady());
 
   useEffect(() => {
-    const unsubscribe = onIdTokenChanged(auth, async (nextUser) => {
+    let unsub = () => {};
+    let cancelled = false;
+
+    const settle = (nextUser: User | null) => {
+      if (cancelled) return;
       setUser(nextUser);
-      try {
-        const token = nextUser ? await nextUser.getIdToken() : null;
-        setSocketAuthToken(token);
-      } catch {
-        setSocketAuthToken(null);
-      }
-      reconnectSocket();
       setLoading(false);
-    });
-    return () => unsubscribe();
+    };
+
+    const timeout = window.setTimeout(() => {
+      settle(auth.currentUser);
+    }, 4000);
+
+    const start = async () => {
+      try {
+        await auth.authStateReady();
+      } catch {
+        /* IndexedDB restore can hang behind blockers; timeout covers it. */
+      }
+      if (cancelled) return;
+      window.clearTimeout(timeout);
+      settle(auth.currentUser);
+
+      unsub = onIdTokenChanged(auth, (nextUser) => {
+        if (cancelled) return;
+        if (!nextUser) {
+          if (auth.currentUser) {
+            setUser(auth.currentUser);
+            return;
+          }
+          setUser(null);
+          return;
+        }
+        setUser(nextUser);
+      });
+    };
+
+    void start();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
-    const sync = () => setOrgReady(readOrgReady());
+    const sync = () => {
+      if (readOrgReady()) setOrgReady(true);
+    };
     window.addEventListener('sigstream-org-auth', sync);
     window.addEventListener('feature-access-changed', sync);
     window.addEventListener('storage', sync);
@@ -66,19 +116,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = useCallback(async () => {
     await signInWithPopup(auth, googleProvider);
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     clearOrgSession();
     setOrgReady(false);
+    disconnectMeetSocket();
     await signOut(auth);
-  };
+  }, []);
 
   const value = useMemo(
     () => ({ user, loading, orgReady, loginWithGoogle, logout }),
-    [user, loading, orgReady]
+    [user, loading, orgReady, loginWithGoogle, logout]
   );
 
   return (
@@ -90,8 +141,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  if (!context) {
+    return {
+      user: null,
+      loading: true,
+      orgReady: false,
+      loginWithGoogle: async () => undefined,
+      logout: async () => undefined,
+    };
   }
   return context;
 };

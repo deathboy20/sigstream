@@ -17,6 +17,7 @@ import { api } from '../services/api';
 import type { ChatMessageDoc } from '../types/meeting.types';
 import { MAX_MEET_FILE_BYTES } from '../types/meeting.types';
 import { toast } from 'sonner';
+import { MeetChatHistoryPanel } from './MeetChatHistoryModal';
 
 interface ChatParticipant {
   id: string;
@@ -34,6 +35,7 @@ interface MeetChatPanelProps {
   participants: ChatParticipant[];
   onLocalSend: (msg: ChatMessageDoc) => void;
   emitSocket: (event: string, payload: Record<string, unknown>) => void;
+  enableHistory?: boolean;
 }
 
 const URL_RE = /(https?:\/\/[^\s]+)/gi;
@@ -191,7 +193,9 @@ const MeetChatPanel: React.FC<MeetChatPanelProps> = ({
   participants,
   onLocalSend,
   emitSocket,
+  enableHistory = false,
 }) => {
+  const [historyView, setHistoryView] = useState(false);
   const [tab, setTab] = useState<'public' | 'private'>('public');
   const [text, setText] = useState('');
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
@@ -408,8 +412,8 @@ const MeetChatPanel: React.FC<MeetChatPanelProps> = ({
     }
   };
 
-  return (
-    <div className="flex h-full min-h-0 flex-col">
+  const liveChat = (
+    <>
       <div className="mb-3 flex gap-1">
         <button
           className={`flex-1 rounded-lg py-1.5 text-xs font-semibold ${tab === 'public' ? 'bg-[#3B6EF8] text-white' : 'bg-white/5 text-zinc-400'}`}
@@ -530,6 +534,34 @@ const MeetChatPanel: React.FC<MeetChatPanelProps> = ({
           </Button>
         </div>
       </div>
+    </>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {enableHistory && (
+        <div className="mb-3 flex gap-1">
+          <button
+            type="button"
+            className={`flex-1 rounded-lg py-1.5 text-xs font-semibold ${!historyView ? 'bg-[#3B6EF8] text-white' : 'bg-white/5 text-zinc-400'}`}
+            onClick={() => setHistoryView(false)}
+          >
+            This meeting
+          </button>
+          <button
+            type="button"
+            className={`flex-1 rounded-lg py-1.5 text-xs font-semibold ${historyView ? 'bg-[#3B6EF8] text-white' : 'bg-white/5 text-zinc-400'}`}
+            onClick={() => setHistoryView(true)}
+          >
+            History
+          </button>
+        </div>
+      )}
+      {enableHistory && historyView ? (
+        <div className="min-h-0 flex-1">
+          <MeetChatHistoryPanel excludeMeetingId={meetingId} />
+        </div>
+      ) : liveChat}
     </div>
   );
 };

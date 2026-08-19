@@ -78,6 +78,12 @@ export interface MeetingFileDoc {
 
 export const MAX_MEET_FILE_BYTES = 50 * 1024 * 1024;
 
+export interface ChatInboxItem {
+  meeting: MeetingDoc;
+  lastMessage: ChatMessageDoc | null;
+  messageCount: number;
+}
+
 export interface CreateMeetingPayload {
   id: string;
   hostId: string;

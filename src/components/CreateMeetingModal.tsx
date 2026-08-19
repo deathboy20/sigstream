@@ -127,31 +127,35 @@ const CreateMeetingModal: React.FC<CreateMeetingModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-2xl bg-[#0D1525] border-white/10 text-white p-4 sm:p-6 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-2xl bg-white text-slate-900 border-slate-200 dark:bg-[#0D1525] dark:border-white/10 dark:text-white p-4 sm:p-6 max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{mode === 'scheduled' ? 'Schedule a meeting' : 'Start a meeting'}</DialogTitle>
-          <DialogDescription className="text-zinc-400">
+          <DialogDescription className="text-slate-500 dark:text-zinc-400">
             Choose participating teams and who can talk to whom. Your team ({ctx.teamName || 'none'}) is included by default.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 mt-2">
           <div>
-            <label className="text-xs uppercase tracking-wide text-zinc-400">Meeting name</label>
+            <label htmlFor="meeting-title" className="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Meeting name</label>
             <Input
+              id="meeting-title"
+              name="meetingTitle"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={`${hostName}'s Meeting`}
-              className="mt-1 bg-white/5 border-white/10 text-white"
+              className="mt-1 bg-slate-50 border-slate-200 text-slate-900 dark:bg-white/5 dark:border-white/10 dark:text-white"
             />
           </div>
           {mode === 'scheduled' && (
             <div>
-              <label className="text-xs uppercase tracking-wide text-zinc-400">Start time</label>
+              <label htmlFor="meeting-start" className="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Start time</label>
               <Input
+                id="meeting-start"
+                name="scheduledAt"
                 type="datetime-local"
                 value={scheduledLocal}
                 onChange={(e) => setScheduledLocal(e.target.value)}
-                className="mt-1 bg-white/5 border-white/10 text-white"
+                className="mt-1 bg-slate-50 border-slate-200 text-slate-900 dark:bg-white/5 dark:border-white/10 dark:text-white"
               />
             </div>
           )}
@@ -207,7 +211,7 @@ const CreateMeetingModal: React.FC<CreateMeetingModalProps> = ({
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)} className="text-white">Cancel</Button>
+            <Button variant="ghost" onClick={() => onOpenChange(false)} className="text-slate-700 dark:text-white">Cancel</Button>
             <Button onClick={handleCreate} disabled={busy} className="bg-[#3B6EF8] hover:bg-[#2E56C9]">
               {busy ? 'Saving…' : mode === 'scheduled' ? 'Schedule' : 'Continue'}
             </Button>

@@ -2,7 +2,7 @@ import { STREAM_API_URL } from '../config';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './firebase';
 import type { Session, Viewer } from '../types/streaming.types';
-import type { ChatMessageDoc, CreateMeetingPayload, MeetingDoc, MeetingFileDoc } from '../types/meeting.types';
+import type { ChatInboxItem, ChatMessageDoc, CreateMeetingPayload, MeetingDoc, MeetingFileDoc } from '../types/meeting.types';
 import { readSigtrackCredentials } from '../hooks/useSigtrackContext';
 
 const API_URL = `${STREAM_API_URL}/api`;
@@ -227,6 +227,11 @@ export const api = {
     return parseJsonResponse<MeetingDoc[]>(response, 'List accessible meetings');
   },
 
+  listChatInbox: async (extra?: Record<string, string>) => {
+    const response = await authorizedFetch(`${API_URL}/meetings/chat-inbox${callerQuery(extra)}`);
+    return parseJsonResponse<ChatInboxItem[]>(response, 'List chat history');
+  },
+
   listMeetingHistory: async (status?: string) => {
     const extra = status ? { status } : undefined;
     const response = await authorizedFetch(`${API_URL}/meetings/history${callerQuery(extra)}`);
@@ -254,15 +259,9 @@ export const api = {
   },
 
   listMessages: async (meetingId: string, scope?: 'admin') => {
-    const orgContext = getOrgContext();
-    const params = new URLSearchParams();
-    if (scope) params.set('scope', scope);
-    if (orgContext.team) params.set('teamId', orgContext.team);
-    if (orgContext.orgDocId) params.set('orgDocId', orgContext.orgDocId);
-    if (orgContext.userType) params.set('userType', orgContext.userType);
-    if (orgContext.userType === 'admin') params.set('canManageMeetings', 'true');
-    const qs = params.toString();
-    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/messages${qs ? `?${qs}` : ''}`);
+    const extra: Record<string, string> = {};
+    if (scope) extra.scope = scope;
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/messages${callerQuery(extra)}`);
     return parseJsonResponse<ChatMessageDoc[]>(response, 'List messages');
   },
 

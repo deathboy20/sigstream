@@ -63,13 +63,13 @@ export const readSigtrackCredentials = (): SigtrackCredentials => {
 export const useSigtrackContext = (): SigtrackContext => {
   const [teams, setTeams] = useState<AuthorizedTeam[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const creds = useMemo(() => readSigtrackCredentials(), []);
-  const orgDocId = typeof window !== 'undefined'
-    ? (localStorage.getItem('organizationDocId') || creds.organizationDocId || '')
-    : (creds.organizationDocId || '');
-
-  const parsedConfig = useMemo((): ParsedConfig | null => {
+  const [creds, setCreds] = useState<SigtrackCredentials>(() => readSigtrackCredentials());
+  const [orgDocId, setOrgDocId] = useState(() => (
+    typeof window !== 'undefined'
+      ? (readSigtrackCredentials().organizationDocId || localStorage.getItem('organizationDocId') || '')
+      : ''
+  ));
+  const [parsedConfig, setParsedConfig] = useState<ParsedConfig | null>(() => {
     const raw = typeof window !== 'undefined' ? localStorage.getItem('organizationConfig') : null;
     if (!raw) return null;
     try {
@@ -77,6 +77,30 @@ export const useSigtrackContext = (): SigtrackContext => {
     } catch {
       return null;
     }
+  });
+
+  useEffect(() => {
+    const sync = () => {
+      const next = readSigtrackCredentials();
+      setCreds(next);
+      setOrgDocId(next.organizationDocId || localStorage.getItem('organizationDocId') || '');
+      const raw = localStorage.getItem('organizationConfig');
+      if (!raw) {
+        setParsedConfig(null);
+        return;
+      }
+      try {
+        setParsedConfig(JSON.parse(raw) as ParsedConfig);
+      } catch {
+        setParsedConfig(null);
+      }
+    };
+    window.addEventListener('sigstream-org-auth', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('sigstream-org-auth', sync);
+      window.removeEventListener('storage', sync);
+    };
   }, []);
 
   const adminLevel = useMemo(() => {

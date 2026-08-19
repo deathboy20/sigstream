@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { api } from '../services/api';
 import { Viewer } from '../types/streaming.types';
-import { socket } from '../contexts/StreamContext';
+import { socket } from '../lib/meetSocket';
 import SimplePeer from 'simple-peer';
 import { toast } from 'sonner';
 
