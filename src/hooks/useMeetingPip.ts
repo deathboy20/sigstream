@@ -86,7 +86,7 @@ export const useMeetingPip = ({ enabled, stream, title, mirror = true }: UseMeet
     try {
       const pipWindow = await docPip.requestWindow({ width: 360, height: 220 });
       docPipWindowRef.current = pipWindow;
-      pipWindow.document.title = title || 'Soko Meet';
+      pipWindow.document.title = title || 'WAR ROOM';
       pipWindow.document.body.style.cssText = 'margin:0;background:#202124;overflow:hidden;height:100%;';
       const pipVideo = pipWindow.document.createElement('video');
       pipVideo.autoplay = true;

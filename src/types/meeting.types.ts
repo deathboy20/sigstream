@@ -76,7 +76,7 @@ export interface MeetingFileDoc {
   timestamp: number;
 }
 
-export const MAX_MEET_FILE_BYTES = 50 * 1024 * 1024;
+export const MAX_MEET_FILE_BYTES = 3 * 1024 * 1024 * 1024;
 
 export interface ChatInboxItem {
   meeting: MeetingDoc;

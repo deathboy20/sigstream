@@ -71,6 +71,14 @@ const MeetingCard: React.FC<{
   const canDelete = canManage || (!!teamId && m.hostTeamId === teamId);
   const canStart = canManage || (!!teamId && m.hostTeamId === teamId);
   const joinReady = kind === 'active' || countdown.ready;
+  const joinedTeams = Array.from(new Set(
+    (m.participants || [])
+      .map((p) => (p.teamName || '').trim())
+      .filter(Boolean)
+  ));
+  const teamLine = joinedTeams.length > 0
+    ? joinedTeams.join(', ')
+    : (m.hostTeamName || m.team || 'Team');
   return (
     <div className={`p-4 rounded-2xl border ${kind === 'completed' ? 'bg-slate-50 border-slate-200 dark:bg-white/[0.02] dark:border-white/[0.06]' : 'bg-white border-slate-200 dark:bg-white/[0.03] dark:border-white/[0.08]'}`}>
       <div className="flex items-center justify-between mb-2">
@@ -85,7 +93,7 @@ const MeetingCard: React.FC<{
         </div>
       </div>
       <p className="text-[11px] text-slate-500">
-        {(m.hostTeamName || m.team || 'Team')} · {(m.participants || []).length} participants
+        {teamLine} · {(m.participants || []).length} participants
         {m.durationMs ? ` · ${Math.round(m.durationMs / 60000)} min` : ''}
         {invited ? ' · Your team is invited' : ''}
       </p>
@@ -172,7 +180,7 @@ const MeetDashboard: React.FC = () => {
       return { orgName: 'Unknown Org', team: null as string | null };
     }
   }, []);
-  const displayName = user?.displayName || sigtrack.teamName || sigtrack.orgName || 'there';
+  const displayName = sigtrack.teamName || sigtrack.orgName || 'Team';
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => {
@@ -306,7 +314,7 @@ const MeetDashboard: React.FC = () => {
             <img src="/sigtrack-tube.png" alt="Soko" className="h-8 sm:h-10 w-auto mb-1 sm:mb-2" />
           </div>
           <span className="text-slate-900 dark:text-white font-bold text-base sm:text-lg tracking-tight group-hover:text-[#3B6EF8] transition-colors truncate">
-            Soko Meet
+            WAR ROOM
           </span>
         </button>
 
@@ -397,7 +405,7 @@ const MeetDashboard: React.FC = () => {
               Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'},
             </p>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              {displayName.split(' ')[0]} 👋
+              {sigtrack.teamName || sigtrack.orgName || 'Team'} 👋
             </h1>
             {!user && (
               <button
@@ -564,7 +572,7 @@ const MeetDashboard: React.FC = () => {
 
           {/* help link */}
           <p className="text-slate-500 text-sm">
-            New to Soko Meet?{' '}
+            New to WAR ROOM?{' '}
             <button onClick={() => navigate('/')}
               className="text-[#3B6EF8] font-semibold hover:underline underline-offset-2 transition-colors">
               Learn how it works
@@ -576,7 +584,7 @@ const MeetDashboard: React.FC = () => {
         <ScheduleMeetingModal
           open
           onOpenChange={(open) => { if (!open) setCreateMode(null); }}
-          hostName={user.displayName || sigtrack.teamName || 'Host'}
+          hostName={sigtrack.teamName || user.displayName || 'Host'}
           hostId={user.uid}
           onCreated={(_id, kind) => {
             if (kind === 'scheduled') {
@@ -592,7 +600,7 @@ const MeetDashboard: React.FC = () => {
           open
           onOpenChange={(open) => { if (!open) setCreateMode(null); }}
           mode="instant"
-          hostName={user.displayName || sigtrack.teamName || 'Host'}
+          hostName={sigtrack.teamName || user.displayName || 'Host'}
           hostId={user.uid}
           onCreated={(id) => {
             setCreateMode(null);
@@ -610,7 +618,7 @@ const MeetDashboard: React.FC = () => {
       <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
         <DialogContent className="w-[95vw] max-w-md bg-white text-slate-900 border-slate-200 dark:bg-[#0D1525] dark:border-white/10 dark:text-white">
           <DialogHeader>
-            <DialogTitle>Soko Meet</DialogTitle>
+            <DialogTitle>WAR ROOM</DialogTitle>
             <DialogDescription className="text-slate-500 dark:text-zinc-400">
               Start, schedule, or join a meeting with a code. Chat history only includes meetings your team or organization is authorized to access.
             </DialogDescription>

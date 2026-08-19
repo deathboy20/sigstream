@@ -154,8 +154,12 @@ export const useSigtrackContext = (): SigtrackContext => {
     };
   }, [orgDocId]);
 
-  const currentTeam = teams.find((t) => t.id === creds.team) || null;
-  const teamName = creds.teamName || currentTeam?.name || '';
+  const currentTeam = teams.find((t) => t.id === creds.team)
+    || teams.find((t) => t.name.trim().toLowerCase() === String(creds.team || creds.teamName || '').trim().toLowerCase())
+    || null;
+  const storedTeam = String(creds.team || '').trim();
+  const teamName = (creds.teamName || currentTeam?.name || '').trim()
+    || (storedTeam && !/^[A-Za-z0-9_-]{16,}$/.test(storedTeam) ? storedTeam : '');
 
   const authorizedTeams = useMemo(() => {
     if (isAdmin) return teams;

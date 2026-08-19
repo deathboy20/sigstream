@@ -55,9 +55,11 @@ const getAuthToken = async () => {
   const currentUser = auth.currentUser ?? await waitForAuthUser();
   if (!currentUser) return null;
   try {
-    return await currentUser.getIdToken(true);
+    // Cached token only. Forcing a refresh on every chat/API call
+    // recreated the Firebase user object and tore down WebRTC peers.
+    return await currentUser.getIdToken();
   } catch {
-    return currentUser.getIdToken();
+    return currentUser.getIdToken(true);
   }
 };
 

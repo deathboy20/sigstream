@@ -74,12 +74,15 @@ interface Participant {
   connectionQuality?: ConnectionQuality;
 }
 
+const labelForPeer = (remote?: { name?: string; teamName?: string } | null) =>
+  (remote?.teamName || remote?.name || '').trim();
+
 interface MeetingData {
   id: string;
   hostId?: string;
   hostName: string;
   title?: string;
-  participants?: Array<{ id: string; name: string; role?: string }>;
+  participants?: Array<{ id: string; name: string; role?: string; teamName?: string }>;
 }
 
 interface ChatMessage {
@@ -116,7 +119,7 @@ interface PendingJoin {
 
 interface SessionParticipantsPayload {
   sessionId: string;
-  participants: Array<{ viewerId: string; name?: string; isHost?: boolean; userId?: string }>;
+  participants: Array<{ viewerId: string; name?: string; teamName?: string; isHost?: boolean; userId?: string }>;
 }
 
 // Screen share is supported on desktop; on mobile only Android Chrome typically supports getDisplayMedia
@@ -165,6 +168,7 @@ const getMeetingUserMedia = async (
 const MeetRoom: React.FC = () => {
   const { meetingId } = useParams<{ meetingId: string }>();
   const { user } = useAuth();
+  const userId = user?.uid;
   const sigtrack = useSigtrackContext();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -235,7 +239,7 @@ const MeetRoom: React.FC = () => {
   const { pipVideoRef, isPipOpen, openPip, closePip } = useMeetingPip({
     enabled: hasJoined && !waitingApproval,
     stream: pipStream,
-    title: meetingData?.title || 'Soko Meet',
+    title: meetingData?.title || 'WAR ROOM',
     mirror: !(isScreenSharing && !!displayStream),
   });
 
@@ -277,9 +281,10 @@ const MeetRoom: React.FC = () => {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [meetingId, user, hasJoined]);
+  }, [meetingId, userId, hasJoined]);
 
-  const resolvedDisplayName = (user?.displayName || guestName || sigtrack.teamName || 'Guest').trim();
+  const roomLabel = (sigtrack.teamName || user?.displayName || guestName || 'Guest').trim();
+  const resolvedDisplayName = roomLabel;
 
   useEffect(() => {
     if (!localStream) return;
@@ -520,7 +525,7 @@ const MeetRoom: React.FC = () => {
     socket.emit('reaction', {
       sessionId: meetingId!,
       reaction: emoji,
-      senderName: (user?.displayName || guestName || 'Anonymous'),
+      senderName: roomLabel,
       senderId: (user?.uid || socket.id)
     });
     
@@ -587,7 +592,7 @@ const MeetRoom: React.FC = () => {
       }
     };
     fetchMeeting();
-  }, [meetingId, user, navigate]);
+  }, [meetingId, userId, navigate]);
 
   const cleanupMeetingState = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state === 'recording') {
@@ -615,6 +620,23 @@ const MeetRoom: React.FC = () => {
 
   useEffect(() => {
     localStreamRef.current = localStream;
+    if (!localStream) return;
+    Object.values(peersRef.current).forEach((peer) => {
+      if (peer.destroyed) return;
+      localStream.getTracks().forEach((track) => {
+        try {
+          const pc = (peer as unknown as { _pc?: RTCPeerConnection })._pc;
+          const sender = pc?.getSenders().find((s) => s.track?.kind === track.kind);
+          if (sender) {
+            if (sender.track?.id !== track.id) void sender.replaceTrack(track);
+            return;
+          }
+          peer.addTrack(track, localStream);
+        } catch {
+          /* peer may still be negotiating */
+        }
+      });
+    });
   }, [localStream]);
 
   useEffect(() => {
@@ -663,7 +685,7 @@ const MeetRoom: React.FC = () => {
             console.warn('Could not access camera/microphone, joining without media:', mediaError);
             toast.info('Joined meeting without camera/microphone. You can still see and hear others.');
           }
-          socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
+          socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: (sigtrack.teamName || user.displayName || 'Guest').trim(), teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
         } else {
           socket.emit('join-request', { sessionId: meetingId!, name: guestName.trim() });
           setWaitingApproval(true);
@@ -674,7 +696,7 @@ const MeetRoom: React.FC = () => {
       }
     };
     init();
-  }, [meetingId, user, guestReady, hasJoined]);
+  }, [meetingId, userId, guestReady, hasJoined]);
 
   useEffect(() => {
     socket.on('pending-join', (data: PendingJoin) => {
@@ -710,7 +732,7 @@ const MeetRoom: React.FC = () => {
       socket.emit('viewer-connected', {
         sessionId: meetingId!,
         viewerId: socket.id,
-        name: user?.displayName || guestNameRef.current || guestName.trim() || sigtrack.teamName || 'Anonymous',
+        name: (sigtrack.teamName || user?.displayName || guestNameRef.current || guestName.trim() || 'Guest').trim(),
       });
     });
     socket.on('join-waiting', () => {
@@ -782,7 +804,7 @@ const MeetRoom: React.FC = () => {
     socket.on('room-state', (payload: {
       locked?: boolean;
       pinnedId?: string | null;
-      participants?: Array<{ viewerId: string; name: string; userId?: string; isMuted?: boolean; isVideoOff?: boolean; isScreenSharing?: boolean; handRaised?: boolean }>;
+      participants?: Array<{ viewerId: string; name: string; teamName?: string; userId?: string; isMuted?: boolean; isVideoOff?: boolean; isScreenSharing?: boolean; handRaised?: boolean }>;
     }) => {
       setMeetingLocked(!!payload.locked);
       if (payload.pinnedId) {
@@ -800,7 +822,7 @@ const MeetRoom: React.FC = () => {
             const existing = byId.get(remote.viewerId);
             const next: Participant = {
               id: remote.viewerId,
-              name: remote.name || existing?.name || 'Guest',
+              name: labelForPeer(remote) || existing?.name || 'Guest',
               stream: existing?.stream || null,
               isMuted: remote.isMuted,
               isVideoOff: remote.isVideoOff,
@@ -859,7 +881,7 @@ const MeetRoom: React.FC = () => {
       socket.off('meeting-end-error');
       socket.off('host-left');
     };
-  }, [meetingId, isHost, navigate, peersRef, cleanupMeetingState, guestName, user]);
+  }, [meetingId, isHost, navigate, cleanupMeetingState, guestName]);
 
   // If the user signs in after joining as guest, upgrade identity once — never on meetingData churn
   useEffect(() => {
@@ -874,9 +896,9 @@ const MeetRoom: React.FC = () => {
       if (user && meetingData?.hostId === user.uid) setIsHost(true);
       return;
     }
-    socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || guestName || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
+    socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: (sigtrack.teamName || user.displayName || guestName || 'Guest').trim(), teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
     if (meetingData?.hostId === user.uid) setIsHost(true);
-  }, [user, meetingId, hasJoined, meetingData?.hostId, guestName]);
+  }, [userId, meetingId, hasJoined, meetingData?.hostId, guestName]);
 
   // Handle peer commands (from host) — use direct track updates so mute-all works reliably
   useEffect(() => {
@@ -1036,7 +1058,7 @@ const MeetRoom: React.FC = () => {
       if (!meetingId || !(user || guestReady) || !hasJoinedRef.current) return;
       toast.success('Reconnected to meeting');
       if (user) {
-        socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: user.displayName || guestNameRef.current || guestName.trim() || sigtrack.teamName || 'Anonymous', teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
+        socket.emit('join-session', { sessionId: meetingId, userId: user.uid, name: (sigtrack.teamName || user.displayName || guestNameRef.current || guestName.trim() || 'Guest').trim(), teamId: sigtrack.teamId || undefined, teamName: sigtrack.teamName || undefined, orgDocId: sigtrack.orgDocId || undefined, orgName: sigtrack.orgName || undefined, userType: sigtrack.userType || undefined });
         if (meetingData?.hostId === user.uid) setIsHost(true);
       } else {
         socket.emit('join-session', { sessionId: meetingId, name: guestNameRef.current || guestName.trim() || 'Guest' });
@@ -1058,13 +1080,15 @@ const MeetRoom: React.FC = () => {
       socket.off('disconnect', onDisconnect);
       socket.off('connect', onConnect);
     };
-  }, [meetingId, user, guestReady, meetingData, guestName]);
+  }, [meetingId, userId, guestReady, guestName]);
 
   useEffect(() => {
     if (!meetingId || !hasJoined) return;
 
-    const nameFromMeeting = (viewerId: string) =>
-      meetingDataRef.current?.participants?.find(p => p.id === viewerId)?.name?.trim();
+    const nameFromMeeting = (viewerId: string) => {
+      const row = meetingDataRef.current?.participants?.find(p => p.id === viewerId);
+      return (row?.teamName || row?.name || '').trim();
+    };
 
     const resolveRemoteName = (viewerId: string, incoming?: string) => {
       const fromIncoming = (incoming || '').trim();
@@ -1122,15 +1146,15 @@ const MeetRoom: React.FC = () => {
         sdpTransform: (sdp: string) => limitSdpBitrate(sdp, peerCount),
       };
 
-      if (localStream) {
-        peerOptions.stream = localStream;
+      if (localStreamRef.current) {
+        peerOptions.stream = localStreamRef.current;
       }
 
       const peer = new SimplePeer(peerOptions);
 
       // Initiator with no local media: createOffer can lack m-lines; recvonly transceivers fix that.
       // Answerer path uses the remote offer's m-lines, so avoid extra transceiverRequest noise.
-      if (!localStream && initiator) {
+      if (!localStreamRef.current && initiator) {
         try {
           if (typeof (peer as any).addTransceiver === 'function') {
             (peer as any).addTransceiver('audio', { direction: 'recvonly' });
@@ -1150,7 +1174,7 @@ const MeetRoom: React.FC = () => {
           signal,
           sessionId: meetingId,
           metadata: {
-            name: user?.displayName || guestNameRef.current || guestName.trim() || 'Guest'
+            name: (sigtrack.teamName || user?.displayName || guestNameRef.current || guestName.trim() || 'Guest').trim()
           }
         });
       });
@@ -1181,21 +1205,22 @@ const MeetRoom: React.FC = () => {
       return peer;
     };
 
-    const handleViewerConnected = ({ viewerId, name, userId }: { viewerId: string; name?: string; userId?: string }) => {
+    const handleViewerConnected = ({ viewerId, name, userId, teamName }: { viewerId: string; name?: string; userId?: string; teamName?: string }) => {
       if (viewerId === socket.id) return;
-      upsertParticipant(viewerId, null, name, userId);
+      upsertParticipant(viewerId, null, labelForPeer({ name, teamName }) || name, userId);
       if (!shouldInitiate(viewerId)) return;
-      createPeer(viewerId, true, name);
+      createPeer(viewerId, true, labelForPeer({ name, teamName }) || name);
     };
 
     const handleSessionParticipants = ({ participants: existingParticipants }: SessionParticipantsPayload) => {
       // Merge only — do not drop local rows that are briefly missing from a racing payload.
       // Removals are handled by `viewer-left`.
-      existingParticipants.forEach(({ viewerId, name, userId }) => {
+      existingParticipants.forEach(({ viewerId, name, userId, teamName }) => {
         if (viewerId === socket.id) return;
-        upsertParticipant(viewerId, null, name, userId);
+        const label = labelForPeer({ name, teamName }) || name;
+        upsertParticipant(viewerId, null, label, userId);
         if (!peersRef.current[viewerId] && shouldInitiate(viewerId)) {
-          createPeer(viewerId, true, name);
+          createPeer(viewerId, true, label);
         }
       });
     };
@@ -1216,7 +1241,7 @@ const MeetRoom: React.FC = () => {
       socket.off('session-participants', handleSessionParticipants);
       socket.off('signal', handleSignal);
     };
-  }, [hasJoined, meetingId, user, localStream]);
+  }, [hasJoined, meetingId]);
 
   const replaceOutgoingVideoTrack = (nextTrack: MediaStreamTrack) => {
     Object.values(peersRef.current).forEach((peer) => {
@@ -1576,8 +1601,8 @@ const MeetRoom: React.FC = () => {
     <div className="h-[100dvh] bg-[#202124] flex flex-col text-white overflow-hidden font-sans">
       <header className="px-2 sm:px-4 py-2 border-b border-zinc-800/50 flex items-center justify-between gap-2 sticky top-0 bg-[#202124]/80 backdrop-blur-md z-50">
         <div className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0" onClick={() => navigate(IS_STANDALONE ? '/meet' : '/teleconference/meet')}>
-          <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-8 w-auto" />
-          <span className="text-base sm:text-xl font-semibold truncate">Soko Meet</span>
+          <img src="/sigtrack-tube.png" alt="WAR ROOM" className="h-8 w-auto" />
+          <span className="text-base sm:text-xl font-semibold truncate">WAR ROOM</span>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {!IS_STANDALONE && (
@@ -1622,7 +1647,6 @@ const MeetRoom: React.FC = () => {
               <div className="h-[60dvh] min-h-0">
                 <MeetChatPanel
                   meetingId={meetingId!}
-                  enableHistory
                   messages={messages.map((m) => ({
                     id: m.id || `${m.timestamp}-${m.senderId}`,
                     meetingId: meetingId!,
@@ -1642,7 +1666,7 @@ const MeetRoom: React.FC = () => {
                   }))}
                   currentId={user?.uid || socket.id || 'anonymous'}
                   selfIds={[user?.uid, socket.id].filter(Boolean) as string[]}
-                  senderName={user?.displayName || guestName || sigtrack.teamName || 'You'}
+                  senderName={roomLabel}
                   senderTeamId={sigtrack.teamId}
                   participants={participants.map((p) => ({ id: p.id, name: p.name, userId: p.userId }))}
                   onLocalSend={appendLocalChat}
@@ -1821,13 +1845,13 @@ const MeetRoom: React.FC = () => {
                   {isScreenSharing && isVideoOff && (
                     <div className="absolute bottom-3 right-3 w-28 sm:w-36 aspect-video rounded-lg overflow-hidden border border-white/20 shadow-xl bg-[#1a1b1e] z-10 flex items-center justify-center">
                       <div className="w-10 h-10 rounded-full bg-[#3B6EF8] flex items-center justify-center text-sm font-bold">
-                        {(user?.displayName?.charAt(0) || guestName?.charAt(0) || 'U')}
+                        {(roomLabel.charAt(0) || 'U')}
                       </div>
                     </div>
                   )}
                   <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-sm font-medium border border-white/10">
                     {localIsPinned || (isScreenSharing && !pinnedParticipant)
-                      ? `${user?.displayName || guestName || sigtrack.teamName || 'You'} ${isHost ? '(Host)' : '(You)'}`
+                      ? `${roomLabel} ${isHost ? '(Host)' : '(You)'}`
                       : pinnedParticipant?.name || 'Pinned'}
                   </div>
                   <button
@@ -1865,7 +1889,7 @@ const MeetRoom: React.FC = () => {
                   {isVideoOff && (
                     <div className="absolute inset-0 flex items-center justify-center bg-[#1a1b1e]">
                       <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#3B6EF8] flex items-center justify-center text-3xl font-bold shadow-xl">
-                        {(user?.displayName?.charAt(0) || guestName?.charAt(0) || 'U')}
+                        {(roomLabel.charAt(0) || 'U')}
                       </div>
                     </div>
                   )}
@@ -1873,7 +1897,7 @@ const MeetRoom: React.FC = () => {
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-[#1a1b1e]">
                   <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#3B6EF8] flex items-center justify-center text-3xl font-bold shadow-xl">
-                    {(user?.displayName?.charAt(0) || guestName?.charAt(0) || 'U')}
+                    {(roomLabel.charAt(0) || 'U')}
                   </div>
                   <div className="absolute bottom-4 left-4 right-4 text-center">
                     <p className="text-xs text-white/60 mb-2">No camera/microphone</p>
@@ -1889,7 +1913,7 @@ const MeetRoom: React.FC = () => {
                 </div>
               )}
               <div className={`absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 border ${localSpeaking ? 'border-emerald-400' : 'border-white/10'}`}>
-                {(user?.displayName || guestName || sigtrack.teamName || 'You')} {isHost ? '(Host)' : '(You)'}
+                {roomLabel} {isHost ? '(Host)' : '(You)'}
                 {isMuted && <MicOff className="h-3.5 w-3.5 text-destructive" />}
                 {!localStream && <span title="No microphone"><MicOff className="h-3.5 w-3.5 text-yellow-400" /></span>}
               </div>
@@ -1937,7 +1961,6 @@ const MeetRoom: React.FC = () => {
               {activeSidebar === 'chat' && (
                 <MeetChatPanel
                   meetingId={meetingId!}
-                  enableHistory
                   messages={messages.map((m) => ({
                     id: m.id || `${m.timestamp}-${m.senderId}`,
                     meetingId: meetingId!,
@@ -1957,7 +1980,7 @@ const MeetRoom: React.FC = () => {
                   }))}
                   currentId={user?.uid || socket.id || 'anonymous'}
                   selfIds={[user?.uid, socket.id].filter(Boolean) as string[]}
-                  senderName={user?.displayName || guestName || sigtrack.teamName || 'You'}
+                  senderName={roomLabel}
                   senderTeamId={sigtrack.teamId}
                   participants={participants.map((p) => ({ id: p.id, name: p.name, userId: p.userId }))}
                   onLocalSend={appendLocalChat}
@@ -1975,12 +1998,12 @@ const MeetRoom: React.FC = () => {
                     <div className="flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition-colors">
                       <div className="flex items-center gap-3">
                         <Avatar className="w-8 h-8 flex-shrink-0">
-                          <AvatarImage src={user?.photoURL || ''} alt={(user?.displayName || guestName || 'User')} />
+                          <AvatarImage src={user?.photoURL || ''} alt={roomLabel} />
                           <AvatarFallback className="bg-[#3B6EF8] text-white text-[10px] font-bold">
-                            {(user?.displayName?.charAt(0) || guestName?.charAt(0) || 'U')}
+                            {(roomLabel.charAt(0) || 'U')}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="text-sm font-medium">{(user?.displayName || guestName || 'You')} (You)</span>
+                        <span className="text-sm font-medium">{roomLabel} (You)</span>
                         {isHost && <span className="ml-1 text-xs text-primary font-bold">(Host)</span>}
                       </div>
                       <div className="flex gap-1">

@@ -41,7 +41,7 @@ const WelcomePage: React.FC = () => {
             Welcome to <span className="text-primary">Soko</span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Choose your experience. Go live with high-quality streaming or host professional meetings with Soko Meet.
+            Choose your experience. Go live with high-quality streaming or host professional meetings in WAR ROOM.
           </p>
         </div>
 
@@ -65,14 +65,14 @@ const WelcomePage: React.FC = () => {
           <Card className="group hover:border-success/50 transition-all duration-300 cursor-pointer overflow-hidden bg-card/50 backdrop-blur-sm" 
             onClick={() => navigate('/login')}>
             <CardHeader className="space-y-1 pb-4">
-              <CardTitle className="text-2xl">Soko Meet</CardTitle>
+              <CardTitle className="text-2xl">WAR ROOM</CardTitle>
               <CardDescription className="text-base">
                 Professional video conferencing with screen sharing and scheduled meetings.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button variant="outline" className="w-full group-hover:bg-success group-hover:text-white transition-all">
-                {user ? 'Go to Dashboard' : 'Enter Soko Meet'} <ArrowRight className="h-4 w-4" />
+                {user ? 'Go to Dashboard' : 'Enter WAR ROOM'} <ArrowRight className="h-4 w-4" />
               </Button>
             </CardContent>
           </Card>

@@ -145,7 +145,7 @@ const PreviewSetupPage: React.FC = () => {
           await api.createMeeting({
             id,
             hostId: user.uid,
-            hostName: user.displayName || sigtrack.teamName || 'Anonymous',
+            hostName: sigtrack.teamName || user.displayName || 'Anonymous',
             title: `${sigtrack.teamName || user.displayName}'s Meeting`,
             participatingTeamIds: sigtrack.teamId ? [sigtrack.teamId, ...sigtrack.meetPrivilege.autoIncludeTeamIds] : sigtrack.meetPrivilege.autoIncludeTeamIds,
             allowedJoinTeamIds: sigtrack.teamId ? [sigtrack.teamId, ...sigtrack.meetPrivilege.autoIncludeTeamIds] : undefined,

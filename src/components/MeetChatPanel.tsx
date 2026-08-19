@@ -5,6 +5,7 @@ import {
   FileImage,
   FileSpreadsheet,
   FileText,
+  Film,
   Loader2,
   MessageSquare,
   Paperclip,
@@ -44,11 +45,15 @@ const formatBytes = (bytes?: number) => {
   if (!bytes || bytes <= 0) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
 const isImageFile = (name?: string, mimeType?: string) =>
   (mimeType || '').startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name || '');
+
+const isVideoFile = (name?: string, mimeType?: string) =>
+  (mimeType || '').startsWith('video/') || /\.(mp4|webm|ogg|mov|m4v)$/i.test(name || '');
 
 const FileGlyph: React.FC<{ fileName?: string; mimeType?: string; spinning?: boolean }> = ({
   fileName,
@@ -58,6 +63,7 @@ const FileGlyph: React.FC<{ fileName?: string; mimeType?: string; spinning?: boo
   const className = 'h-4 w-4 text-[#8ab4f8]';
   if (spinning) return <Loader2 className={`${className} animate-spin`} />;
   if (isImageFile(fileName, mimeType)) return <FileImage className={className} />;
+  if (isVideoFile(fileName, mimeType)) return <Film className={className} />;
   if (/\.(xlsx|xls|csv)$/i.test(fileName || '') || (mimeType || '').includes('spreadsheet')) {
     return <FileSpreadsheet className={className} />;
   }
@@ -77,6 +83,7 @@ const AttachmentCard: React.FC<{ message: ChatMessageDoc; isSelf: boolean }> = (
   const sizeLabel = formatBytes(message.fileSize);
   const ready = !!message.fileUrl && !uploading && !failed;
   const showImage = ready && isImageFile(message.fileName, message.mimeType);
+  const showVideo = ready && isVideoFile(message.fileName, message.mimeType);
 
   const statusLabel = uploading
     ? isSelf
@@ -86,7 +93,7 @@ const AttachmentCard: React.FC<{ message: ChatMessageDoc; isSelf: boolean }> = (
         : 'Incoming file…'
     : failed
       ? 'Couldn’t send'
-      : [sizeLabel, 'Open'].filter(Boolean).join(' · ');
+      : [sizeLabel, showVideo ? 'Play' : 'Open'].filter(Boolean).join(' · ');
 
   const body = (
     <>
@@ -95,6 +102,15 @@ const AttachmentCard: React.FC<{ message: ChatMessageDoc; isSelf: boolean }> = (
           src={message.fileUrl}
           alt={message.fileName || 'Attachment'}
           className="mb-2 max-h-40 w-full rounded-lg object-cover"
+        />
+      )}
+      {showVideo && message.fileUrl && (
+        <video
+          src={message.fileUrl}
+          controls
+          playsInline
+          preload="metadata"
+          className="mb-2 max-h-56 w-full rounded-lg bg-black"
         />
       )}
       <div className="flex items-start gap-2.5">
@@ -124,6 +140,14 @@ const AttachmentCard: React.FC<{ message: ChatMessageDoc; isSelf: boolean }> = (
   if (!ready) {
     return (
       <div className={`mt-2 rounded-xl border px-2.5 py-2 ${failed ? 'border-red-500/30 bg-red-500/10' : 'border-white/10 bg-white/5'}`}>
+        {body}
+      </div>
+    );
+  }
+
+  if (showVideo) {
+    return (
+      <div className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2.5 py-2">
         {body}
       </div>
     );
@@ -285,7 +309,7 @@ const MeetChatPanel: React.FC<MeetChatPanelProps> = ({
 
   const onPickFile = async (file: File) => {
     if (file.size > MAX_MEET_FILE_BYTES) {
-      toast.error('Files must be 50 MB or smaller');
+      toast.error('Files must be 3 GB or smaller');
       return;
     }
     if (tab === 'private' && selectedRecipients.length === 0) {
@@ -517,7 +541,7 @@ const MeetChatPanel: React.FC<MeetChatPanelProps> = ({
             className="text-zinc-400 hover:text-white disabled:opacity-40"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            title="Attach file (max 50 MB)"
+            title="Attach file (max 3 GB)"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
           </button>

@@ -84,13 +84,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (cancelled) return;
         if (!nextUser) {
           if (auth.currentUser) {
-            setUser(auth.currentUser);
+            setUser((prev) => prev ?? auth.currentUser);
             return;
           }
           setUser(null);
           return;
         }
-        setUser(nextUser);
+        setUser((prev) => (prev?.uid === nextUser.uid ? prev : nextUser));
       });
     };
 
