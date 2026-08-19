@@ -63,13 +63,7 @@ const WelcomePage: React.FC = () => {
 
           {/* Soko Meet Option */}
           <Card className="group hover:border-success/50 transition-all duration-300 cursor-pointer overflow-hidden bg-card/50 backdrop-blur-sm" 
-            onClick={() => {
-              if (user) {
-                navigate('/meet');
-              } else {
-                loginWithGoogle().then(() => navigate('/meet')).catch(() => {});
-              }
-            }}>
+            onClick={() => navigate('/login')}>
             <CardHeader className="space-y-1 pb-4">
               <CardTitle className="text-2xl">Soko Meet</CardTitle>
               <CardDescription className="text-base">

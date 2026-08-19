@@ -53,6 +53,6 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-white;
   }
 }

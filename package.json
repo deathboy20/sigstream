@@ -1,5 +1,5 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "sigstream",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -34,6 +34,7 @@
     "date-fns": "^3.6.0",
     "events": "^3.3.0",
     "firebase": "^12.8.0",
+    "framer-motion": "^13.1.0",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
     "process": "^0.11.10",

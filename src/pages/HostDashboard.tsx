@@ -185,8 +185,8 @@ const HostDashboardContent: React.FC = () => {
               audioDevices={audioDevices}
               selectedVideoId={selectedDevices.videoDeviceId}
               selectedAudioId={selectedDevices.audioDeviceId}
-              onSelectVideo={(id) => selectDevice(id, 'videoinput')}
-              onSelectAudio={(id) => selectDevice(id, 'audioinput')}
+              onSelectVideo={(id) => selectDevice('video', id)}
+              onSelectAudio={(id) => selectDevice('audio', id)}
               onStartPreview={handleStartPreview}
               onScreenShare={handleScreenShare}
               isLoading={isLoading}

@@ -1,193 +1,339 @@
 import { STREAM_API_URL } from '../config';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './firebase';
-import { Session, Viewer } from '../types/streaming.types';
+import type { Session, Viewer } from '../types/streaming.types';
+import type { ChatMessageDoc, CreateMeetingPayload, MeetingDoc, MeetingFileDoc } from '../types/meeting.types';
+import { readSigtrackCredentials } from '../hooks/useSigtrackContext';
 
 const API_URL = `${STREAM_API_URL}/api`;
 
-type ApiRequestOptions = RequestInit & {
-  requiresAuth?: boolean;
-};
-
-type HealthResponse = {
-  status: string;
-  endpoints?: string[];
-};
-
-type MeetingRecord = {
-  id: string;
-  hostId: string;
-  hostName: string;
-  title?: string;
-  isActive?: boolean;
-  participants?: Array<{ id: string; name: string; role?: string }>;
-  [key: string]: unknown;
-};
-
-type MeetingPublicRecord = {
-  id: string;
-  title: string;
-  hostName: string;
-  isActive: boolean;
-  createdAt: number | null;
-  scheduledAt: number | null;
-};
-
-const getAuthToken = async () => {
-  const user = auth.currentUser;
-  if (!user) {
-    return null;
-  }
-  return user.getIdToken();
-};
-
-const request = async <T>(path: string, options: ApiRequestOptions = {}): Promise<T> => {
-  const { requiresAuth = false, headers, ...fetchOptions } = options;
-  const mergedHeaders = new Headers(headers);
-
-  if (requiresAuth) {
-    const token = await getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required');
+const parseJsonResponse = async <T>(response: Response, context: string): Promise<T> => {
+  const contentType = response.headers.get('content-type') || '';
+  const bodyText = await response.text();
+  if (!response.ok) {
+    let parsedError: { error?: string } | null = null;
+    try {
+      parsedError = bodyText ? JSON.parse(bodyText) as { error?: string } : null;
+    } catch {
+      parsedError = null;
     }
-    mergedHeaders.set('Authorization', `Bearer ${token}`);
-    mergedHeaders.set('x-firebase-token', token);
+    throw new Error(parsedError?.error || `${context} failed (${response.status})`);
   }
+  if (!contentType.includes('application/json')) {
+    const sample = bodyText.slice(0, 120);
+    throw new Error(`${context} returned non-JSON response. Check env variables. Response starts with: ${sample}`);
+  }
+  try {
+    return JSON.parse(bodyText) as T;
+  } catch {
+    const sample = bodyText.slice(0, 120);
+    throw new Error(`${context} returned invalid JSON. Response starts with: ${sample}`);
+  }
+};
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...fetchOptions,
-    headers: mergedHeaders,
+const waitForAuthUser = () =>
+  new Promise<User | null>((resolve) => {
+    const existing = auth.currentUser;
+    if (existing) {
+      resolve(existing);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      unsubscribe();
+      resolve(auth.currentUser);
+    }, 5000);
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      window.clearTimeout(timeout);
+      unsubscribe();
+      resolve(user);
+    });
   });
 
-  if (!response.ok) {
-    const errorPayload = await response.json().catch(() => ({} as { error?: string; message?: string }));
-    const errorMessage =
-      (errorPayload as { error?: string; message?: string }).error ||
-      (errorPayload as { error?: string; message?: string }).message ||
-      `Request failed (${response.status})`;
-    throw new Error(errorMessage);
+const getAuthToken = async () => {
+  const currentUser = auth.currentUser ?? await waitForAuthUser();
+  if (!currentUser) return null;
+  try {
+    return await currentUser.getIdToken(true);
+  } catch {
+    return currentUser.getIdToken();
   }
+};
 
-  if (response.status === 204) {
-    return undefined as T;
+const getOrgContext = () => {
+  const parsed = readSigtrackCredentials();
+  const userType = parsed.userType || parsed.loginType || null;
+  return {
+    orgName: parsed.organization || 'Unknown Org',
+    team: parsed.team || null,
+    teamName: parsed.teamName || null,
+    hostTeamId: parsed.team || null,
+    hostTeamName: parsed.teamName || null,
+    userType,
+    loginType: parsed.loginType || userType,
+    adminLevel: parsed.adminLevel ? Number(parsed.adminLevel) : null,
+    orgDocId:
+      (typeof window !== 'undefined' ? (localStorage.getItem('organizationDocId') || null) : null)
+      || parsed.organizationDocId
+      || null,
+  };
+};
+
+const callerQuery = (extra?: Record<string, string>) => {
+  const ctx = getOrgContext();
+  const params = new URLSearchParams(extra || {});
+  if (ctx.team && !params.get('teamId')) params.set('teamId', ctx.team);
+  if (ctx.orgDocId && !params.get('orgDocId')) params.set('orgDocId', ctx.orgDocId);
+  if (ctx.orgName && !params.get('orgName')) params.set('orgName', ctx.orgName);
+  if (ctx.userType && !params.get('userType')) params.set('userType', ctx.userType);
+  if (ctx.teamName && !params.get('teamName')) params.set('teamName', ctx.teamName);
+  if (String(ctx.userType || '').toLowerCase() === 'admin') {
+    params.set('canManageMeetings', 'true');
+    if (!params.get('monitorScope')) params.set('monitorScope', 'all');
   }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+};
 
-  return response.json() as Promise<T>;
+const authorizedFetch = async (url: string, init?: RequestInit) => {
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error('Missing Firebase auth token. Please sign in again.');
+  }
+  const headers = new Headers(init?.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+  headers.set('x-firebase-token', token);
+  return fetch(url, {
+    ...init,
+    headers,
+  });
 };
 
 export const api = {
   createSession: async (): Promise<Session> => {
-    return request<Session>('/sessions', {
+    const response = await authorizedFetch(`${API_URL}/sessions`, {
       method: 'POST',
-      requiresAuth: true,
     });
+    return parseJsonResponse(response, 'Create session');
   },
 
   getSession: async (sessionId: string): Promise<Session> => {
-    return request<Session>(`/sessions/${sessionId}`);
+    const response = await fetch(`${API_URL}/sessions/${sessionId}`);
+    return parseJsonResponse(response, 'Get session');
   },
 
-  endSession: async (sessionId: string): Promise<{ message: string }> => {
-    return request<{ message: string }>(`/sessions/${sessionId}`, {
+  endSession: async (sessionId: string) => {
+    await authorizedFetch(`${API_URL}/sessions/${sessionId}`, {
       method: 'DELETE',
-      requiresAuth: true,
     });
   },
 
   getViewers: async (sessionId: string): Promise<Record<string, Viewer>> => {
-    return request<Record<string, Viewer>>(`/sessions/${sessionId}/viewers`);
+    const response = await fetch(`${API_URL}/sessions/${sessionId}/viewers`);
+    return parseJsonResponse(response, 'Get viewers');
   },
 
   requestJoin: async (sessionId: string, name: string): Promise<Viewer> => {
-    return request<Viewer>(`/sessions/${sessionId}/request`, {
+    const response = await fetch(`${API_URL}/sessions/${sessionId}/request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
+    return parseJsonResponse(response, 'Request join');
   },
 
-  approveViewer: async (sessionId: string, viewerId: string): Promise<{ message: string }> => {
-    return request<{ message: string }>(`/sessions/${sessionId}/approve`, {
+  approveViewer: async (sessionId: string, viewerId: string) => {
+    await authorizedFetch(`${API_URL}/sessions/${sessionId}/approve`, {
       method: 'POST',
-      requiresAuth: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ viewerId }),
     });
   },
 
-  rejectViewer: async (sessionId: string, viewerId: string): Promise<{ message: string }> => {
-    return request<{ message: string }>(`/sessions/${sessionId}/reject`, {
+  rejectViewer: async (sessionId: string, viewerId: string) => {
+    await authorizedFetch(`${API_URL}/sessions/${sessionId}/reject`, {
       method: 'POST',
-      requiresAuth: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ viewerId }),
     });
   },
 
-  setAdmissionMode: async (sessionId: string, mode: 'auto' | 'manual'): Promise<{ message: string; mode: 'auto' | 'manual' }> => {
-    return request<{ message: string; mode: 'auto' | 'manual' }>(`/sessions/${sessionId}/admission`, {
+  setAdmissionMode: async (sessionId: string, mode: 'auto' | 'manual') => {
+    const response = await authorizedFetch(`${API_URL}/sessions/${sessionId}/admission`, {
       method: 'POST',
-      requiresAuth: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode }),
     });
+    return parseJsonResponse(response, 'Set admission mode');
   },
 
-  removeViewer: async (sessionId: string, viewerId: string): Promise<{ message: string }> => {
-    return request<{ message: string }>(`/sessions/${sessionId}/viewers/${viewerId}`, {
+  removeViewer: async (sessionId: string, viewerId: string) => {
+    await authorizedFetch(`${API_URL}/sessions/${sessionId}/viewers/${viewerId}`, {
       method: 'DELETE',
-      requiresAuth: true,
     });
   },
-
-  healthCheck: async (): Promise<HealthResponse> => {
-    return request<HealthResponse>('/health');
+  
+  healthCheck: async () => {
+      const response = await fetch(`${API_URL}/health`);
+      return parseJsonResponse(response, 'Health check');
   },
 
-  deleteSession: async (id: string): Promise<{ message: string }> => {
-    return request<{ message: string }>(`/sessions/${id}`, {
+  deleteSession: async (id: string) => {
+    const response = await fetch(`${API_URL}/sessions/${id}`, {
       method: 'DELETE',
-      requiresAuth: true,
     });
+    return parseJsonResponse(response, 'Delete session');
   },
 
-  createMeeting: async (meetingData: { id: string; hostName: string; title?: string; scheduledAt?: number; orgName?: string; team?: string; userType?: string }): Promise<MeetingRecord> => {
-    return request<MeetingRecord>('/meetings', {
+  // --- Meetings API ---
+  createMeeting: async (meetingData: CreateMeetingPayload) => {
+    const orgContext = getOrgContext();
+    const response = await authorizedFetch(`${API_URL}/meetings`, {
       method: 'POST',
-      requiresAuth: true,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(meetingData),
+      body: JSON.stringify({ ...meetingData, ...orgContext }),
     });
+    return parseJsonResponse<MeetingDoc>(response, 'Create meeting');
   },
 
-  getMeeting: async (id: string): Promise<MeetingRecord> => {
-    return request<MeetingRecord>(`/meetings/${id}`, {
-      requiresAuth: true,
-    });
-  },
-
-  getMeetingPublic: async (id: string): Promise<MeetingPublicRecord> => {
-    return request<MeetingPublicRecord>(`/meetings/${id}/public`);
-  },
-
-  listUserMeetings: async (userId: string): Promise<MeetingRecord[]> => {
-    return request<MeetingRecord[]>(`/meetings/user/${userId}`, {
-      requiresAuth: true,
-    });
-  },
-
-  restartMeeting: async (meetingId: string): Promise<MeetingRecord> => {
-    return request<MeetingRecord>(`/meetings/${meetingId}/restart`, {
-      method: 'POST',
-      requiresAuth: true,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-  },
-
-  deleteMeeting: async (meetingId: string): Promise<{ message: string }> => {
-    return request<{ message: string }>(`/meetings/${meetingId}`, {
+  deleteMeeting: async (id: string) => {
+    const orgContext = getOrgContext();
+    const response = await authorizedFetch(`${API_URL}/meetings/${id}${callerQuery()}`, {
       method: 'DELETE',
-      requiresAuth: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orgContext),
     });
+    return parseJsonResponse(response, 'Delete meeting');
+  },
+
+  getMeeting: async (id: string) => {
+    const response = await authorizedFetch(`${API_URL}/meetings/${id}${callerQuery()}`);
+    return parseJsonResponse<MeetingDoc>(response, 'Get meeting');
+  },
+
+  getMeetingPublic: async (id: string) => {
+    const response = await fetch(`${API_URL}/meetings/${id}/public`);
+    return parseJsonResponse<MeetingDoc>(response, 'Get public meeting');
+  },
+
+  listUserMeetings: async (userId: string) => {
+    const response = await authorizedFetch(`${API_URL}/meetings/user/${userId}`);
+    return parseJsonResponse<MeetingDoc[]>(response, 'List user meetings');
+  },
+
+  listAccessibleMeetings: async (extra?: Record<string, string>) => {
+    const response = await authorizedFetch(`${API_URL}/meetings/accessible${callerQuery(extra)}`);
+    return parseJsonResponse<MeetingDoc[]>(response, 'List accessible meetings');
+  },
+
+  listMeetingHistory: async (status?: string) => {
+    const extra = status ? { status } : undefined;
+    const response = await authorizedFetch(`${API_URL}/meetings/history${callerQuery(extra)}`);
+    return parseJsonResponse<MeetingDoc[]>(response, 'List meeting history');
+  },
+
+  startMeeting: async (meetingId: string) => {
+    const orgContext = getOrgContext();
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orgContext),
+    });
+    return parseJsonResponse<MeetingDoc>(response, 'Start meeting');
+  },
+
+  checkJoinAccess: async (meetingId: string) => {
+    const orgContext = getOrgContext();
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/join-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(orgContext),
+    });
+    return parseJsonResponse<{ allowed: boolean; meeting?: MeetingDoc; error?: string }>(response, 'Check join access');
+  },
+
+  listMessages: async (meetingId: string, scope?: 'admin') => {
+    const orgContext = getOrgContext();
+    const params = new URLSearchParams();
+    if (scope) params.set('scope', scope);
+    if (orgContext.team) params.set('teamId', orgContext.team);
+    if (orgContext.orgDocId) params.set('orgDocId', orgContext.orgDocId);
+    if (orgContext.userType) params.set('userType', orgContext.userType);
+    if (orgContext.userType === 'admin') params.set('canManageMeetings', 'true');
+    const qs = params.toString();
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/messages${qs ? `?${qs}` : ''}`);
+    return parseJsonResponse<ChatMessageDoc[]>(response, 'List messages');
+  },
+
+  sendMessage: async (meetingId: string, payload: Partial<ChatMessageDoc>) => {
+    const orgContext = getOrgContext();
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, ...orgContext, teamId: orgContext.team }),
+    });
+    return parseJsonResponse<ChatMessageDoc>(response, 'Send message');
+  },
+
+  listFiles: async (meetingId: string) => {
+    const orgContext = getOrgContext();
+    const params = new URLSearchParams();
+    if (orgContext.team) params.set('teamId', orgContext.team);
+    if (orgContext.orgDocId) params.set('orgDocId', orgContext.orgDocId);
+    const qs = params.toString();
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/files${qs ? `?${qs}` : ''}`);
+    return parseJsonResponse<MeetingFileDoc[]>(response, 'List files');
+  },
+
+  registerFile: async (meetingId: string, payload: Partial<MeetingFileDoc>) => {
+    const orgContext = getOrgContext();
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, ...orgContext }),
+    });
+    return parseJsonResponse<MeetingFileDoc>(response, 'Register file');
+  },
+
+  createUploadUrl: async (meetingId: string, fileName: string, mimeType: string, sizeBytes?: number) => {
+    const orgContext = getOrgContext();
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/files/upload-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...orgContext, fileName, mimeType, sizeBytes }),
+    });
+    return parseJsonResponse<{
+      id: string;
+      storagePath: string;
+      uploadUrl: string | null;
+      contentType: string;
+      clientUpload?: boolean;
+    }>(response, 'Create upload URL');
+  },
+
+  getFileDownloadUrl: async (meetingId: string, fileId: string) => {
+    const orgContext = getOrgContext();
+    const params = new URLSearchParams();
+    if (orgContext.team) params.set('teamId', orgContext.team);
+    if (orgContext.orgDocId) params.set('orgDocId', orgContext.orgDocId);
+    const qs = params.toString();
+    const response = await authorizedFetch(
+      `${API_URL}/meetings/${meetingId}/files/${fileId}/download${qs ? `?${qs}` : ''}`
+    );
+    return parseJsonResponse<{ url: string | null; fileName?: string; storagePath?: string; clientDownload?: boolean }>(
+      response,
+      'Get file download URL'
+    );
+  },
+
+  /** Restart an ended meeting (host only). Reuses the same meeting ID. */
+  restartMeeting: async (meetingId: string, userId: string) => {
+    const response = await authorizedFetch(`${API_URL}/meetings/${meetingId}/restart`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    return parseJsonResponse(response, 'Restart meeting');
   },
 };

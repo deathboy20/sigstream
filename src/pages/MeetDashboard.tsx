@@ -1,315 +1,24 @@
-// import React, { useState } from 'react';
-// import { useNavigate } from 'react-router-dom';
-// import { useAuth } from '../contexts/AuthContext';
-// import { Button } from '../components/ui/button';
-// import { Input } from '../components/ui/input';
-// import { Card, CardContent } from '../components/ui/card';
-// import { 
-//   Video, 
-//   Keyboard, 
-//   Calendar, 
-//   Plus, 
-//   LogOut, 
-//   Settings, 
-//   HelpCircle, 
-//   MessageSquare,
-//   Globe,
-//   Loader2
-// } from 'lucide-react';
-// import { toast } from 'sonner';
-// import { api } from '../services/api';
 
-// const MeetDashboard: React.FC = () => {
-//   const { user, loginWithGoogle, logout, loading } = useAuth();
-//   const navigate = useNavigate();
-//   const [meetingCode, setMeetingCode] = useState('');
-//   const [isCreating, setIsCreating] = useState(false);
-
-//   const handleStartMeeting = async () => {
-//     if (!user) {
-//       toast.error('Please sign in first');
-//       return;
-//     }
-    
-//     setIsCreating(true);
-//     const id = Math.random().toString(36).substring(2, 12);
-    
-//     try {
-//       await api.createMeeting({
-//         id,
-//         hostId: user.uid,
-//         hostName: user.displayName || 'Anonymous',
-//         title: `${user.displayName}'s Meeting`
-//       });
-//       navigate(`/meet/${id}`);
-//     } catch (error) {
-//       console.error("Failed to create meeting", error);
-//       toast.error("Failed to start meeting. Please try again.");
-//     } finally {
-//       setIsCreating(false);
-//     }
-//   };
-
-//   const handleJoinMeeting = () => {
-//     if (!meetingCode.trim()) {
-//       toast.error('Please enter a meeting code');
-//       return;
-//     }
-//     navigate(`/meet/${meetingCode}`);
-//   };
-
-//   if (loading) {
-//     return (
-//       <div className="min-h-screen flex items-center justify-center bg-background">
-//         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-//       </div>
-//     );
-//   }
-
-//   if (!user) {
-//     return (
-//       <div className="min-h-screen bg-background flex flex-col">
-//         {/* Simple Header for Login Page */}
-//         <header className="h-16 px-6 flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-md z-50">
-//           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-//             <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-8 w-auto" />
-//             <span className="text-xl font-semibold text-foreground">Soko Meet</span>
-//           </div>
-//           <div className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
-//             <span className="hidden sm:inline">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-//             <Button variant="ghost" onClick={loginWithGoogle} className="text-primary hover:bg-primary/10">Sign In</Button>
-//           </div>
-//         </header>
-
-//         <main className="flex-1 flex flex-col lg:flex-row items-center justify-center gap-12 px-6 py-12 max-w-7xl mx-auto w-full">
-//           {/* Left Side - Content */}
-//           <div className="flex-1 space-y-8 text-center lg:text-left max-w-xl">
-//             <div className="space-y-6">
-//               <h1 className="text-4xl md:text-5xl lg:text-6xl font-normal tracking-tight text-foreground leading-tight">
-//                 Premium video meetings. <br />
-//                 <span className="text-muted-foreground">Now free for everyone.</span>
-//               </h1>
-//               <p className="text-lg md:text-xl text-muted-foreground leading-relaxed">
-//                 We re-engineered the service we built for secure business meetings, <span className="font-medium text-foreground">Soko Meet</span>, to make it free and available for all.
-//               </p>
-//             </div>
-
-//             <div className="flex flex-col sm:flex-row items-center gap-4 pt-4">
-//               <Button 
-//                 onClick={loginWithGoogle} 
-//                 size="lg" 
-//                 className="h-14 px-8 gap-4 text-lg font-medium shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all rounded-full w-full sm:w-auto"
-//               >
-//                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="h-6 w-6 bg-white p-1 rounded-full" />
-//                 Sign in with Google
-//               </Button>
-//               <Button 
-//                 variant="outline" 
-//                 size="lg" 
-//                 className="h-14 px-8 text-lg font-medium rounded-full w-full sm:w-auto border-2"
-//                 onClick={() => navigate('/')}
-//               >
-//                 Learn more
-//               </Button>
-//             </div>
-
-//             <div className="pt-8 border-t border-border w-full">
-//               <p className="text-sm text-muted-foreground">
-//                 <span className="text-primary font-medium cursor-pointer hover:underline">Learn more</span> about Soko Meet's security and privacy.
-//               </p>
-//             </div>
-//           </div>
-
-//           {/* Right Side - Visual Illustration */}
-//           <div className="flex-1 w-full max-w-lg lg:max-w-xl">
-//             <div className="relative aspect-square rounded-3xl bg-gradient-to-br from-primary/5 to-primary/20 flex items-center justify-center overflow-hidden border border-primary/10 group">
-//               {/* Animated Background Elements */}
-//               <div className="absolute top-10 right-10 w-20 h-20 bg-primary/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
-//               <div className="absolute bottom-10 left-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl group-hover:scale-125 transition-transform duration-700" />
-              
-//               <div className="relative z-10 flex flex-col items-center text-center p-8 space-y-6">
-//                 <div className="relative">
-//                   <div className="w-48 h-48 rounded-full bg-white shadow-2xl flex items-center justify-center p-6">
-//                     <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-32 w-auto object-contain" />
-//                   </div>
-//                   <div className="absolute -top-4 -right-4 w-12 h-12 rounded-2xl bg-success flex items-center justify-center shadow-lg text-white transform rotate-12">
-//                     <Globe className="h-6 w-6" />
-//                   </div>
-//                   <div className="absolute -bottom-4 -left-4 w-12 h-12 rounded-2xl bg-primary flex items-center justify-center shadow-lg text-white transform -rotate-12">
-//                     <Plus className="h-6 w-6" />
-//                   </div>
-//                 </div>
-                
-//                 <div className="space-y-2">
-//                   <h3 className="text-2xl font-semibold text-foreground">Secure, high-quality meetings</h3>
-//                   <p className="text-muted-foreground max-w-xs mx-auto">
-//                     Host up to 100 participants with no time limits on our free tier.
-//                   </p>
-//                 </div>
-
-//                 <div className="flex gap-2">
-//                   <div className="h-2 w-12 rounded-full bg-primary" />
-//                   <div className="h-2 w-2 rounded-full bg-primary/20" />
-//                   <div className="h-2 w-2 rounded-full bg-primary/20" />
-//                 </div>
-//               </div>
-//             </div>
-//           </div>
-//         </main>
-
-//         {/* Footer */}
-//         <footer className="py-8 px-6 border-t border-border mt-auto">
-//           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-//             <div className="flex items-center gap-6">
-//               <span className="hover:text-foreground cursor-pointer transition-colors">Privacy</span>
-//               <span className="hover:text-foreground cursor-pointer transition-colors">Terms</span>
-//               <span className="hover:text-foreground cursor-pointer transition-colors">Help</span>
-//             </div>
-//             <div>
-//               © {new Date().getFullYear()} Soko Video Solutions. All rights reserved.
-//             </div>
-//           </div>
-//         </footer>
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <div className="min-h-screen bg-background flex flex-col">
-//       {/* Header */}
-//       <header className="h-16 px-6 border-b border-border flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-md z-50">
-//         <div className="flex items-center gap-4">
-//           <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-//             <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-8 w-auto" />
-//             <span className="text-xl font-semibold text-foreground">Soko Meet</span>
-//           </div>
-//         </div>
-
-//         <div className="flex items-center gap-4">
-//           <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground mr-4">
-//             {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
-//           </div>
-//           <Button variant="ghost" size="icon" className="text-muted-foreground">
-//             <HelpCircle className="h-5 w-5" />
-//           </Button>
-//           <Button variant="ghost" size="icon" className="text-muted-foreground">
-//             <MessageSquare className="h-5 w-5" />
-//           </Button>
-//           <Button variant="ghost" size="icon" className="text-muted-foreground">
-//             <Settings className="h-5 w-5" />
-//           </Button>
-          
-//           <div className="h-8 w-px bg-border mx-2" />
-          
-//           <div className="flex items-center gap-3">
-//             <div className="flex flex-col items-end hidden sm:flex">
-//               <span className="text-sm font-medium leading-none">{user.displayName}</span>
-//               <span className="text-xs text-muted-foreground leading-tight">{user.email}</span>
-//             </div>
-//             <div className="h-9 w-9 rounded-full overflow-hidden border border-border">
-//               <img src={user.photoURL || ''} alt={user.displayName || 'User'} className="h-full w-full object-cover" />
-//             </div>
-//             <Button variant="ghost" size="icon" onClick={logout} className="text-destructive">
-//               <LogOut className="h-5 w-5" />
-//             </Button>
-//           </div>
-//         </div>
-//       </header>
-
-//       {/* Main Content */}
-//       <main className="flex-1 container mx-auto px-6 py-12 md:py-24 flex flex-col md:flex-row items-center justify-between gap-12">
-//         <div className="flex-1 max-w-xl space-y-8">
-//           <div className="space-y-4 text-center md:text-left">
-//             <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">
-//               Premium video meetings. Now free for everyone.
-//             </h1>
-//             <p className="text-xl text-muted-foreground">
-//               We re-engineered the service we built for secure business meetings, Soko Meet, to make it free and available for all.
-//             </p>
-//           </div>
-
-//           <div className="flex flex-col sm:flex-row items-center gap-4">
-//             <Button 
-//               size="lg" 
-//               className="h-12 px-6 gap-2 w-full sm:w-auto text-base" 
-//               onClick={handleStartMeeting}
-//               disabled={isCreating}
-//             >
-//               {isCreating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
-//               New meeting
-//             </Button>
-            
-//             <div className="flex items-center gap-3 w-full sm:w-auto">
-//               <div className="relative flex-1 sm:w-64">
-//                 <Keyboard className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-//                 <Input 
-//                   placeholder="Enter a code or link" 
-//                   className="pl-10 h-12 text-base focus-visible:ring-primary"
-//                   value={meetingCode}
-//                   onChange={(e) => setMeetingCode(e.target.value)}
-//                   onKeyDown={(e) => e.key === 'Enter' && handleJoinMeeting()}
-//                 />
-//               </div>
-//               <Button 
-//                 variant="ghost" 
-//                 size="lg" 
-//                 className={`h-12 text-base font-semibold ${meetingCode ? 'text-primary' : 'text-muted-foreground cursor-not-allowed'}`}
-//                 disabled={!meetingCode}
-//                 onClick={handleJoinMeeting}
-//               >
-//                 Join
-//               </Button>
-//             </div>
-//           </div>
-
-//           <div className="h-px bg-border w-full" />
-
-//           <div className="flex items-center gap-2 text-sm">
-//             <span className="text-primary font-medium underline cursor-pointer">Learn more</span>
-//             <span className="text-muted-foreground">about Soko Meet</span>
-//           </div>
-//         </div>
-
-//         {/* Right side - Illustration/Carousel */}
-//         <div className="flex-1 w-full max-w-lg hidden lg:block">
-//           <Card className="border-none bg-transparent shadow-none">
-//             <CardContent className="p-0 flex flex-col items-center text-center space-y-6">
-//               <div className="relative w-72 h-72 rounded-full bg-primary/5 flex items-center justify-center overflow-hidden">
-//                 <img src="/sigtrack-tube.png" alt="Soko Meet" className="h-48 w-auto opacity-30 group-hover:opacity-50 transition-opacity" />
-//                 <div className="absolute inset-0 border-2 border-primary/10 rounded-full scale-90" />
-//                 <div className="absolute inset-0 border-2 border-primary/5 rounded-full scale-100" />
-//               </div>
-//               <div className="space-y-2">
-//                 <h3 className="text-2xl font-semibold">Get a link you can share</h3>
-//                 <p className="text-muted-foreground">
-//                   Click <span className="font-semibold">New meeting</span> to get a link you can send to people you want to meet with
-//                 </p>
-//               </div>
-//               <div className="flex gap-2">
-//                 <div className="h-2 w-2 rounded-full bg-primary" />
-//                 <div className="h-2 w-2 rounded-full bg-muted" />
-//                 <div className="h-2 w-2 rounded-full bg-muted" />
-//               </div>
-//             </CardContent>
-//           </Card>
-//         </div>
-//       </main>
-//     </div>
-//   );
-// };
-
-// export default MeetDashboard;
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   Plus, LogOut, Settings, HelpCircle, MessageSquare,
-  Loader2, Shield, Zap, Users, Video, Link2, Calendar, Trash2
+  Loader2, Shield, Zap, Users, Link2, Calendar, ArrowLeft, Trash2, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '../services/firebase';
 import { api } from '../services/api';
 import { Button } from '../components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { useSigtrackContext } from '../hooks/useSigtrackContext';
+import { useCountdown } from '../hooks/useCountdown';
+import CreateMeetingModal from '../components/CreateMeetingModal';
+import ScheduleMeetingModal from '../components/ScheduleMeetingModal';
+import MeetingHistoryDetail from '../components/MeetingHistoryDetail';
+import type { MeetingDoc } from '../types/meeting.types';
 
 /* ─── Live clock ──────────────────────────────────────────── */
 function useClock() {
@@ -321,6 +30,100 @@ function useClock() {
   return now;
 }
 
+const classifyMeeting = (m: MeetingDoc, now = Date.now()) => {
+  if (m.status === 'ended' || m.isActive === false && m.status !== 'scheduled') return 'completed';
+  if (m.status === 'scheduled' || (m.scheduledAt && m.scheduledAt > now && m.status !== 'active')) {
+    return m.scheduledAt && m.scheduledAt - now < 15 * 60 * 1000 ? 'upcoming' : 'scheduled';
+  }
+  return 'active';
+};
+
+const meetingKindLabel = (kind: ReturnType<typeof classifyMeeting>) => {
+  if (kind === 'active') return 'active meeting';
+  if (kind === 'upcoming') return 'upcoming meeting';
+  if (kind === 'scheduled') return 'scheduled meeting';
+  return 'completed meeting';
+};
+
+const MeetingCard: React.FC<{
+  meeting: MeetingDoc;
+  canManage: boolean;
+  teamId?: string | null;
+  onJoin: (id: string) => void;
+  onRestart: (id: string) => void;
+  onDelete: (m: MeetingDoc) => void;
+  onHistory: (m: MeetingDoc) => void;
+  onStart: (id: string) => void;
+  restartingId: string | null;
+  deletingId: string | null;
+}> = ({ meeting: m, canManage, teamId, onJoin, onRestart, onDelete, onHistory, onStart, restartingId, deletingId }) => {
+  const kind = classifyMeeting(m);
+  const countdown = useCountdown(kind === 'scheduled' || kind === 'upcoming' ? m.scheduledAt : null);
+  const invited = !!(teamId && (
+    (m.participatingTeamIds || []).includes(teamId)
+    || (m.allowedJoinTeamIds || []).includes(teamId)
+    || m.hostTeamId === teamId
+  ));
+  const canDelete = canManage || (!!teamId && m.hostTeamId === teamId);
+  const canStart = canManage || (!!teamId && m.hostTeamId === teamId);
+  const joinReady = kind === 'active' || countdown.ready;
+  return (
+    <div className={`p-4 rounded-2xl border ${kind === 'completed' ? 'bg-white/[0.02] border-white/[0.06]' : 'bg-white/[0.03] border-white/[0.08]'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-bold text-white truncate">{m.title}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-[#4B5563]">{new Date(m.scheduledAt || m.createdAt || 0).toLocaleString()}</span>
+          {canDelete && (
+            <button onClick={() => onDelete(m)} disabled={deletingId === m.id} className="h-7 w-7 rounded-lg flex items-center justify-center bg-red-500/10 text-red-400">
+              {deletingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="text-[11px] text-zinc-500">
+        {(m.hostTeamName || m.team || 'Team')} · {(m.participants || []).length} participants
+        {m.durationMs ? ` · ${Math.round(m.durationMs / 60000)} min` : ''}
+        {invited ? ' · Your team is invited' : ''}
+      </p>
+      {(kind === 'scheduled' || kind === 'upcoming') && (
+        <p className="text-xs text-[#3B6EF8] mt-1 font-medium">Starts in {countdown.label}</p>
+      )}
+      <div className="flex items-center justify-between mt-4 gap-2">
+        <code className="text-xs text-[#3B6EF8] bg-[#3B6EF8]/10 px-2 py-1 rounded-lg">{m.id}</code>
+        {kind === 'completed' ? (
+          <div className="flex gap-2">
+            <button onClick={() => onHistory(m)} className="text-xs font-bold text-white bg-white/[0.05] px-3 py-1.5 rounded-xl">History</button>
+            {canStart && (
+              <button onClick={() => onRestart(m.id)} disabled={restartingId === m.id} className="text-xs font-bold text-white bg-[#3B6EF8] px-3 py-1.5 rounded-xl">
+                {restartingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Start again'}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            {(kind === 'scheduled' || kind === 'upcoming') && canStart && (
+              <button
+                onClick={() => countdown.ready ? onStart(m.id) : undefined}
+                disabled={!countdown.ready}
+                className="text-xs font-bold text-white bg-[#3B6EF8] disabled:opacity-40 px-4 py-1.5 rounded-xl"
+              >
+                {countdown.ready ? 'Start' : 'Waiting'}
+              </button>
+            )}
+            <button
+              onClick={() => onJoin(m.id)}
+              disabled={!joinReady}
+              className="text-xs font-bold text-white bg-white/[0.05] hover:bg-[#3B6EF8] disabled:opacity-40 px-4 py-1.5 rounded-xl"
+            >
+              Join
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const FEATURES = [
   { icon: Shield, label: 'End-to-end encrypted' },
   { icon: Zap,    label: 'Ultra-low latency'    },
@@ -330,17 +133,38 @@ const FEATURES = [
 /* ════════════════════════════════════════════════════════════ */
 const MeetDashboard: React.FC = () => {
   const { user, loginWithGoogle, logout, loading } = useAuth();
+  const sigtrack = useSigtrackContext();
   const navigate = useNavigate();
   const now      = useClock();
   const [code, setCode]         = useState('');
-  const [creating, setCreating] = useState(false);
-  const [userMeetings, setUserMeetings] = useState<any[]>([]);
+  const [userMeetings, setUserMeetings] = useState<MeetingDoc[]>([]);
   const [restartingId, setRestartingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(10);
+  const [createMode, setCreateMode] = useState<'instant' | 'scheduled' | null>(null);
+  const [historyMeeting, setHistoryMeeting] = useState<MeetingDoc | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MeetingDoc | null>(null);
+  const [firebaseReady, setFirebaseReady] = useState(!!auth.currentUser);
 
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const dateStr = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  const orgContext = React.useMemo(() => {
+    const localRaw = localStorage.getItem('userCredentials');
+    const sessionRaw = sessionStorage.getItem('userCredentials');
+    const raw = localRaw || sessionRaw;
+    if (!raw) {
+      return { orgName: 'Unknown Org', team: null as string | null };
+    }
+    try {
+      const parsed = JSON.parse(raw) as { organization?: string; team?: string | null };
+      return {
+        orgName: parsed.organization || 'Unknown Org',
+        team: parsed.team || null
+      };
+    } catch {
+      return { orgName: 'Unknown Org', team: null as string | null };
+    }
+  }, []);
 
   // Redirect countdown for unauthenticated users
   useEffect(() => {
@@ -361,7 +185,7 @@ const MeetDashboard: React.FC = () => {
   // Handle actual redirect
   useEffect(() => {
     if (!user && countdown === 0) {
-      navigate('/');
+      navigate('/login');
     }
   }, [countdown, user, navigate]);
 
@@ -374,14 +198,35 @@ const MeetDashboard: React.FC = () => {
     }
   }, [countdown, user]);
 
-  // Fetch user meetings
   useEffect(() => {
-    if (user) {
-      api.listUserMeetings(user.uid)
-        .then(meetings => setUserMeetings(Array.isArray(meetings) ? meetings : []))
-        .catch(err => console.error("Failed to fetch meetings", err));
-    }
-  }, [user]);
+    const unsub = onAuthStateChanged(auth, (fbUser) => {
+      setFirebaseReady(!!fbUser);
+    });
+    return () => unsub();
+  }, []);
+
+  const refreshMeetings = useCallback(() => {
+    if (!user || !auth.currentUser) return;
+    const extra: Record<string, string> = {};
+    if (sigtrack.teamId) extra.teamId = sigtrack.teamId;
+    if (sigtrack.teamName) extra.teamName = sigtrack.teamName;
+    if (sigtrack.orgDocId) extra.orgDocId = sigtrack.orgDocId;
+    if (sigtrack.orgName) extra.orgName = sigtrack.orgName;
+    if (sigtrack.userType) extra.userType = sigtrack.userType;
+    if (sigtrack.canManageMeetings) extra.canManageMeetings = 'true';
+    if (sigtrack.meetPrivilege.monitorScope) extra.monitorScope = sigtrack.meetPrivilege.monitorScope;
+    if (String(sigtrack.userType || '').toLowerCase() === 'admin') extra.monitorScope = 'all';
+    api.listAccessibleMeetings(extra)
+      .then((meetings) => setUserMeetings(Array.isArray(meetings) ? meetings : []))
+      .catch((err) => console.error('Failed to fetch meetings', err));
+  }, [user, sigtrack.teamId, sigtrack.teamName, sigtrack.orgDocId, sigtrack.orgName, sigtrack.userType, sigtrack.canManageMeetings, sigtrack.meetPrivilege.monitorScope]);
+
+  useEffect(() => {
+    if (!user || !firebaseReady) return;
+    refreshMeetings();
+    const t = window.setInterval(refreshMeetings, 8000);
+    return () => window.clearInterval(t);
+  }, [user, firebaseReady, refreshMeetings]);
 
   /* inject Outfit font once */
   useEffect(() => {
@@ -392,34 +237,43 @@ const MeetDashboard: React.FC = () => {
     document.head.appendChild(l);
   }, []);
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const openMeeting = (meetingId: string, mode: 'host' | 'join' = 'join') => {
+    navigate('/setup', { state: { mode, meetingCode: meetingId, meetingId } });
+  };
+
   const handleStartMeeting = async () => {
     if (!user) { toast.error('Please sign in first'); return; }
-    setCreating(true);
-    const id = Math.random().toString(36).substring(2, 12);
-    try {
-      await api.createMeeting({
-        id,
-        hostName: user.displayName || 'Anonymous',
-        title: `${user.displayName}'s Meeting`,
-      });
-      navigate(`/meet/${id}`);
-    } catch {
-      toast.error('Failed to start meeting. Please try again.');
-    } finally { setCreating(false); }
+    if (!sigtrack.canCreateMeeting) { toast.error('Your team cannot create meetings'); return; }
+    setCreateMode('instant');
   };
 
   const handleJoinMeeting = () => {
     if (!code.trim()) { toast.error('Please enter a meeting code'); return; }
-    navigate(`/meet/${code.trim()}`);
+    navigate('/setup', { state: { mode: 'join', meetingCode: code.trim() } });
+  };
+
+  const handleStartScheduled = async (meetingId: string) => {
+    try {
+      await api.startMeeting(meetingId);
+      toast.success('Meeting started');
+      openMeeting(meetingId, 'host');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to start meeting');
+    }
   };
 
   const handleRestartMeeting = async (meetingId: string) => {
     if (!user) return;
     setRestartingId(meetingId);
     try {
-      await api.restartMeeting(meetingId);
-      toast.success('Meeting restarted. Joining…');
-      navigate(`/meet/${meetingId}`);
+      await api.restartMeeting(meetingId, user.uid);
+      toast.success('Meeting restarted. Opening…');
+      openMeeting(meetingId, 'host');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to restart meeting');
     } finally {
@@ -427,28 +281,19 @@ const MeetDashboard: React.FC = () => {
     }
   };
 
-  const executeDeleteMeeting = async (meetingId: string) => {
+  const deleteMeeting = async (meetingId: string) => {
+    if (!user) return;
     setDeletingId(meetingId);
     try {
       await api.deleteMeeting(meetingId);
-      setUserMeetings(prev => prev.filter(m => m.id !== meetingId));
+      setUserMeetings((prev) => prev.filter((m) => m.id !== meetingId));
+      setDeleteTarget(null);
       toast.success('Meeting deleted');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to delete meeting');
     } finally {
       setDeletingId(null);
     }
-  };
-
-  const handleDeleteMeeting = (meetingId: string, meetingTitle?: string) => {
-    toast.warning(`Delete "${meetingTitle || meetingId}"?`, {
-      description: 'This action is permanent and cannot be undone.',
-      action: {
-        label: 'Delete',
-        onClick: () => executeDeleteMeeting(meetingId),
-      },
-      cancel: 'Cancel',
-    });
   };
 
   /* ── shared font style ── */
@@ -503,7 +348,7 @@ const MeetDashboard: React.FC = () => {
 
   /* ════ LOGGED IN DASHBOARD ════ */
   return (
-    <div style={rootFont} className="min-h-screen bg-[#070B14] flex flex-col overflow-hidden">
+    <div style={rootFont} className="h-[100dvh] bg-blue-500/10 flex flex-col overflow-hidden">
 
       {/* ambient blobs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
@@ -512,21 +357,30 @@ const MeetDashboard: React.FC = () => {
       </div>
 
       {/* ── HEADER ── */}
-      <header className="relative z-50 h-16 px-4 sm:px-6 flex items-center justify-between
-        border-b border-white/[0.06] bg-[#070B14]/80 backdrop-blur-xl sticky top-0">
+      <header className="z-50 px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between gap-2
+        border-b border-white/[0.06] bg-blue-500/10 backdrop-blur-xl sticky top-0">
 
         {/* logo */}
-        <button onClick={() => navigate('/')} className="flex items-center gap-2.5 group">
+        <button onClick={() => navigate('/')} className="flex items-center gap-2 sm:gap-2.5 group min-w-0">
         <div className="flex justify-center">
-            <img src="/sigtrack-tube.png" alt="Soko" className="h-10 w-auto mb-2" />
+            <img src="/sigtrack-tube.png" alt="Soko" className="h-8 sm:h-10 w-auto mb-1 sm:mb-2" />
           </div>
-          <span className="text-white font-bold text-lg tracking-tight group-hover:text-[#3B6EF8] transition-colors">
+          <span className="text-white font-bold text-base sm:text-lg tracking-tight group-hover:text-[#3B6EF8] transition-colors truncate">
             Soko Meet
           </span>
         </button>
 
         {/* right side */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-xl border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08] px-2 sm:px-3"
+            onClick={() => navigate('/')}
+          >
+            <ArrowLeft className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Back to Dashboard</span>
+          </Button>
           <span className="hidden md:block text-sm text-[#4B5563] font-medium mr-2">
             {timeStr} · {dateStr}
           </span>
@@ -534,19 +388,22 @@ const MeetDashboard: React.FC = () => {
           {/* icon buttons */}
           {[HelpCircle, MessageSquare, Settings].map((Icon, i) => (
             <button key={i}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-[#4B5563]
+              className="hidden sm:flex w-9 h-9 rounded-xl items-center justify-center text-[#4B5563]
                 hover:bg-white/[0.06] hover:text-white transition-all duration-150">
               <Icon className="w-4.5 h-4.5" style={{ width: 18, height: 18 }} />
             </button>
           ))}
 
-          <div className="w-px h-6 bg-white/[0.08] mx-1" />
+          <div className="hidden sm:block w-px h-6 bg-white/[0.08] mx-1" />
 
           {/* avatar + info */}
           <div className="flex items-center gap-2.5">
             <div className="hidden sm:flex flex-col items-end leading-tight">
               <span className="text-sm font-semibold text-white/90">{user.displayName}</span>
               <span className="text-[11px] text-[#4B5563]">{user.email}</span>
+              <span className="text-[11px] text-[#4B5563]">
+                {sigtrack.orgName}{sigtrack.teamName ? ` • ${sigtrack.teamName}` : orgContext.team ? ` • ${orgContext.team}` : ''}
+              </span>
             </div>
             <Avatar className="w-9 h-9 border border-white/10 ring-2 ring-white/5 flex-shrink-0">
               <AvatarImage src={user.photoURL || ''} alt={user.displayName || 'User'} className="object-cover" />
@@ -554,7 +411,7 @@ const MeetDashboard: React.FC = () => {
                 {user.displayName?.charAt(0) || 'U'}
               </AvatarFallback>
             </Avatar>
-            <button onClick={logout}
+            <button type="button" onClick={handleLogout}
               className="w-9 h-9 rounded-xl flex items-center justify-center
                 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all duration-150">
               <LogOut style={{ width: 16, height: 16 }} />
@@ -564,8 +421,8 @@ const MeetDashboard: React.FC = () => {
       </header>
 
       {/* ── MAIN ── */}
-      <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-8 sm:py-12">
-        <div className="w-full max-w-5xl flex flex-col items-center gap-10">
+      <main className="relative z-10 flex-1 flex items-start justify-center px-3 sm:px-4 py-6 sm:py-12 overflow-y-auto scrollbar-hide">
+        <div className="w-full max-w-5xl flex flex-col items-center gap-6 sm:gap-10">
 
           {/* greeting */}
           <div className="text-center">
@@ -578,16 +435,16 @@ const MeetDashboard: React.FC = () => {
           </div>
 
           {/* ACTION CARDS */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-4xl">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 w-full max-w-4xl">
 
             {/* NEW MEETING */}
-            <button onClick={handleStartMeeting} disabled={creating}
+            <button onClick={handleStartMeeting}
               className="group relative flex flex-col items-start p-6 rounded-2xl text-left
                 bg-gradient-to-br from-[#3B6EF8] to-[#2040C0] overflow-hidden
                 border border-[#3B6EF8]/50 hover:border-[#5B8AFF]
                 shadow-2xl shadow-[#3B6EF8]/20 hover:shadow-[#3B6EF8]/40
                 hover:-translate-y-0.5 active:translate-y-0
-                transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed">
+                transition-all duration-200">
               {/* shimmer */}
               <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0
                 group-hover:opacity-100 transition-opacity duration-300" />
@@ -596,13 +453,10 @@ const MeetDashboard: React.FC = () => {
 
               <div className="relative z-10 w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center mb-4
                 group-hover:bg-white/20 transition-colors">
-                {creating
-                  ? <Loader2 className="w-5 h-5 text-white animate-spin" />
-                  : <Plus className="w-5 h-5 text-white" />
-                }
+                <Plus className="w-5 h-5 text-white" />
               </div>
               <span className="relative z-10 text-white font-bold text-lg leading-tight">
-                {creating ? 'Creating…' : 'Start Instant Meeting'}
+                Start Instant Meeting
               </span>
               <span className="relative z-10 text-blue-200/70 text-sm mt-1">
                 Start a meeting right now
@@ -611,7 +465,10 @@ const MeetDashboard: React.FC = () => {
 
             {/* SCHEDULE MEETING */}
             <button 
-              onClick={() => toast.info("Scheduling feature coming soon!")}
+              onClick={() => {
+                if (!sigtrack.canCreateMeeting) { toast.error('Your team cannot schedule meetings'); return; }
+                setCreateMode('scheduled');
+              }}
               className="group relative flex flex-col items-start p-6 rounded-2xl text-left
                 bg-[#0D1525] border border-white/[0.08] hover:border-[#3B6EF8]/50
                 shadow-xl shadow-black/40 hover:-translate-y-0.5 active:translate-y-0
@@ -634,7 +491,7 @@ const MeetDashboard: React.FC = () => {
               <span className="text-white font-bold text-lg leading-tight mb-1">Join with Code</span>
               <span className="text-[#4B5563] text-sm mb-5">Enter a code or link</span>
 
-              <div className="flex gap-2 mt-auto">
+              <div className="flex flex-col sm:flex-row gap-2 mt-auto">
                 <div className="relative flex-1">
                   <input
                     type="text"
@@ -651,7 +508,7 @@ const MeetDashboard: React.FC = () => {
                 <button
                   onClick={handleJoinMeeting}
                   disabled={!code.trim()}
-                  className="h-10 px-5 rounded-xl bg-white/[0.08] text-white text-sm font-bold
+                  className="h-10 w-full sm:w-auto px-5 rounded-xl bg-white/[0.08] text-white text-sm font-bold
                     hover:bg-[#3B6EF8] hover:shadow-lg hover:shadow-[#3B6EF8]/30
                     disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white/[0.08]
                     transition-all duration-200 whitespace-nowrap">
@@ -661,61 +518,54 @@ const MeetDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* YOUR MEETINGS (active + ended; host can restart ended) */}
+          {/* MEETING LISTS */}
           {userMeetings.length > 0 && (
-            <div className="w-full max-w-4xl mt-8">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-white">Your Meetings</h2>
-                <span className="text-xs text-[#4B5563] uppercase tracking-widest font-bold">Active & past</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {userMeetings.slice(0, 8).map((m: any) => {
-                  const isEnded = m.isActive === false;
-                  const isHost = m.hostId === user?.uid;
-                  return (
-                    <div key={m.id} 
-                      className={`p-4 rounded-2xl border transition-all group ${isEnded ? 'bg-white/[0.02] border-white/[0.06]' : 'bg-white/[0.03] border-white/[0.08] hover:border-white/[0.15]'}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-bold text-white group-hover:text-[#3B6EF8] transition-colors">{m.title}</span>
-                        <span className="text-[10px] text-[#4B5563]">{new Date(m.createdAt || 0).toLocaleDateString()}</span>
-                      </div>
-                      {isEnded && <span className="text-[10px] text-amber-500/90 font-medium">Ended</span>}
-                      <div className="flex items-center justify-between mt-4 gap-2">
-                        <code className="text-xs text-[#3B6EF8] bg-[#3B6EF8]/10 px-2 py-1 rounded-lg">{m.id}</code>
-                        <div className="flex items-center gap-2">
-                          {isEnded && isHost ? (
-                            <button 
-                              onClick={() => handleRestartMeeting(m.id)}
-                              disabled={restartingId === m.id || deletingId === m.id}
-                              className="text-xs font-bold text-white bg-[#3B6EF8] hover:bg-[#2E56C9] px-4 py-1.5 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5">
-                              {restartingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                              Start again
-                            </button>
-                          ) : isEnded ? (
-                            <span className="text-[10px] text-[#4B5563]">Ended</span>
-                          ) : (
-                            <button 
-                              onClick={() => navigate(`/meet/${m.id}`)}
-                              disabled={deletingId === m.id}
-                              className="text-xs font-bold text-white bg-white/[0.05] hover:bg-[#3B6EF8] px-4 py-1.5 rounded-xl transition-all disabled:opacity-50">
-                              Join
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleDeleteMeeting(m.id, m.title)}
-                            disabled={deletingId === m.id || restartingId === m.id}
-                            className="h-8 w-8 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                            title="Delete meeting"
-                          >
-                            {deletingId === m.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
+            <div className="w-full max-w-4xl mt-8 space-y-8">
+              {(['active', 'upcoming', 'scheduled', 'completed'] as const).map((section) => {
+                const items = userMeetings.filter((m) => classifyMeeting(m) === section);
+                if (items.length === 0) return null;
+                const titles = {
+                  active: 'Active meetings',
+                  upcoming: 'Upcoming meetings',
+                  scheduled: 'Scheduled meetings',
+                  completed: 'Completed meetings',
+                };
+                return (
+                  <div key={section}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xl font-bold text-white">{titles[section]}</h2>
+                      <span className="text-xs text-[#4B5563] uppercase tracking-widest font-bold">{items.length}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {items.map((m) => (
+                        <MeetingCard
+                          key={m.id}
+                          meeting={m}
+                          canManage={sigtrack.canManageMeetings}
+                          teamId={sigtrack.teamId}
+                          onJoin={openMeeting}
+                          onRestart={handleRestartMeeting}
+                          onDelete={setDeleteTarget}
+                          onHistory={setHistoryMeeting}
+                          onStart={handleStartScheduled}
+                          restartingId={restartingId}
+                          deletingId={deletingId}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+          )}
+
+          {sigtrack.canManageMeetings && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="flex items-center gap-2 text-sm text-[#3B6EF8] hover:underline"
+            >
+              <ShieldCheck className="h-4 w-4" /> Admin chat monitor
+            </button>
           )}
 
           {/* FEATURE STRIP */}
@@ -740,6 +590,66 @@ const MeetDashboard: React.FC = () => {
           </p>
         </div>
       </main>
+      {user && createMode === 'scheduled' && (
+        <ScheduleMeetingModal
+          open
+          onOpenChange={(open) => { if (!open) setCreateMode(null); }}
+          hostName={user.displayName || sigtrack.teamName || 'Host'}
+          hostId={user.uid}
+          onCreated={(_id, kind) => {
+            if (kind === 'scheduled') {
+              toast.success('Scheduled meeting saved');
+              refreshMeetings();
+            }
+            setCreateMode(null);
+          }}
+        />
+      )}
+      {user && createMode === 'instant' && (
+        <CreateMeetingModal
+          open
+          onOpenChange={(open) => { if (!open) setCreateMode(null); }}
+          mode="instant"
+          hostName={user.displayName || sigtrack.teamName || 'Host'}
+          hostId={user.uid}
+          onCreated={(id) => {
+            setCreateMode(null);
+            navigate('/setup', { state: { mode: 'host', meetingId: id } });
+          }}
+        />
+      )}
+      <MeetingHistoryDetail
+        meeting={historyMeeting}
+        open={!!historyMeeting}
+        onOpenChange={(open) => { if (!open) setHistoryMeeting(null); }}
+      />
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="w-[95vw] max-w-md bg-[#0D1525] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle>Delete {deleteTarget ? meetingKindLabel(classifyMeeting(deleteTarget)) : 'meeting'}</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              This confirmation is based on the meeting type, not the current user. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-zinc-300">
+            Delete{' '}
+            <span className="font-semibold text-white">
+              {deleteTarget?.title || 'this meeting'}
+            </span>
+            {deleteTarget?.hostTeamName ? ` (${deleteTarget.hostTeamName})` : ''}?
+          </p>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)} className="text-white">Cancel</Button>
+            <Button
+              className="bg-red-600 hover:bg-red-500 text-white"
+              disabled={!!deletingId}
+              onClick={() => { if (deleteTarget) void deleteMeeting(deleteTarget.id); }}
+            >
+              {deletingId ? 'Deleting…' : 'Delete'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

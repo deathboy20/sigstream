@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MediaDevice, SelectedDevices } from '../types/streaming.types';
 
 export const useMediaDevices = () => {
@@ -10,34 +10,44 @@ export const useMediaDevices = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
+  const selectedRef = useRef<SelectedDevices>(selectedDevices);
+  const permissionOnceRef = useRef(false);
 
-  // Enumerate available devices
-  const enumerateDevices = useCallback(async () => {
+  useEffect(() => {
+    selectedRef.current = selectedDevices;
+  }, [selectedDevices]);
+
+  useEffect(() => {
+    streamRef.current = stream;
+  }, [stream]);
+
+  const enumerateDevices = useCallback(async (requestPermission = false) => {
     try {
-      // Request permissions first to get device labels
-      await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      
-      const deviceList = await navigator.mediaDevices.enumerateDevices();
+      let deviceList = await navigator.mediaDevices.enumerateDevices();
+      const needsLabels = deviceList.some(
+        (device) => (device.kind === 'videoinput' || device.kind === 'audioinput') && !device.label
+      );
+
+      // Only prompt getUserMedia once for labels. Never do this on devicechange —
+      // { video: true } opens the default/first camera and resets the user's choice.
+      if (needsLabels && requestPermission && !permissionOnceRef.current) {
+        permissionOnceRef.current = true;
+        const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        permissionStream.getTracks().forEach((track) => track.stop());
+        deviceList = await navigator.mediaDevices.enumerateDevices();
+      }
+
       const mediaDevices: MediaDevice[] = deviceList
-        .filter(device => device.kind === 'videoinput' || device.kind === 'audioinput')
-        .map(device => ({
+        .filter((device) => device.kind === 'videoinput' || device.kind === 'audioinput')
+        .map((device) => ({
           deviceId: device.deviceId,
           label: device.label || `${device.kind} (${device.deviceId.slice(0, 8)})`,
           kind: device.kind as 'videoinput' | 'audioinput',
           groupId: device.groupId,
         }));
-      
+
       setDevices(mediaDevices);
-      
-      // Auto-select first devices if none selected
-      const firstVideo = mediaDevices.find(d => d.kind === 'videoinput');
-      const firstAudio = mediaDevices.find(d => d.kind === 'audioinput');
-      
-      setSelectedDevices(prev => ({
-        videoDeviceId: prev.videoDeviceId || firstVideo?.deviceId || null,
-        audioDeviceId: prev.audioDeviceId || firstAudio?.deviceId || null,
-      }));
-      
       setError(null);
     } catch (err) {
       setError('Failed to access media devices. Please grant camera/microphone permissions.');
@@ -45,35 +55,39 @@ export const useMediaDevices = () => {
     }
   }, []);
 
-  // Get media stream with selected devices
-  const getStream = useCallback(async () => {
-    if (!selectedDevices.videoDeviceId && !selectedDevices.audioDeviceId) {
-      setError('Please select at least one device');
-      return null;
-    }
+  const getStream = useCallback(async (override?: Partial<SelectedDevices>) => {
+    const videoDeviceId = override?.videoDeviceId ?? selectedRef.current.videoDeviceId;
+    const audioDeviceId = override?.audioDeviceId ?? selectedRef.current.audioDeviceId;
 
     setIsLoading(true);
     try {
-      // Stop existing stream
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+
+      let newStream: MediaStream;
+      if (videoDeviceId || audioDeviceId) {
+        const constraints: MediaStreamConstraints = {
+          video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
+          audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true,
+        };
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: videoDeviceId ? { deviceId: { ideal: videoDeviceId } } : true,
+            audio: audioDeviceId ? { deviceId: { ideal: audioDeviceId } } : true,
+          });
+        }
+      } else {
+        newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       }
 
-      const constraints: MediaStreamConstraints = {
-        video: selectedDevices.videoDeviceId
-          ? {
-              deviceId: { exact: selectedDevices.videoDeviceId },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
-              frameRate: { ideal: 30 },
-            }
-          : false,
-        audio: selectedDevices.audioDeviceId
-          ? { deviceId: { exact: selectedDevices.audioDeviceId } }
-          : false,
-      };
-
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const videoId = newStream.getVideoTracks()[0]?.getSettings().deviceId;
+      const audioId = newStream.getAudioTracks()[0]?.getSettings().deviceId;
+      setSelectedDevices((prev) => ({
+        videoDeviceId: videoDeviceId || videoId || prev.videoDeviceId,
+        audioDeviceId: audioDeviceId || audioId || prev.audioDeviceId,
+      }));
+      streamRef.current = newStream;
       setStream(newStream);
       setError(null);
       return newStream;
@@ -84,18 +98,15 @@ export const useMediaDevices = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDevices, stream]);
+  }, []);
 
-  // Get screen share stream
   const getScreenShare = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
 
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { 
+        video: {
           width: { ideal: 1920 },
           height: { ideal: 1080 },
           frameRate: { ideal: 30 },
@@ -103,6 +114,7 @@ export const useMediaDevices = () => {
         audio: true,
       });
 
+      streamRef.current = displayStream;
       setStream(displayStream);
       setError(null);
       return displayStream;
@@ -113,55 +125,59 @@ export const useMediaDevices = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [stream]);
+  }, []);
 
-  // Stop all tracks
   const stopStream = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-  }, [stream]);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setStream(null);
+  }, []);
 
-  // Toggle mute
   const toggleMute = useCallback(() => {
-    if (stream) {
-      const audioTracks = stream.getAudioTracks();
-      audioTracks.forEach(track => {
-        track.enabled = !track.enabled;
-      });
-    }
-  }, [stream]);
+    streamRef.current?.getAudioTracks().forEach((track) => {
+      track.enabled = !track.enabled;
+    });
+  }, []);
 
-  // Select device
-  const selectDevice = useCallback((deviceId: string, kind: 'videoinput' | 'audioinput') => {
-    setSelectedDevices(prev => ({
-      ...prev,
-      [kind === 'videoinput' ? 'videoDeviceId' : 'audioDeviceId']: deviceId,
+  const selectDevice = useCallback((type: 'video' | 'audio', deviceId: string) => {
+    setSelectedDevices((prev) => {
+      const next = {
+        ...prev,
+        [type === 'video' ? 'videoDeviceId' : 'audioDeviceId']: deviceId,
+      };
+      selectedRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const syncSelectedFromStream = useCallback((mediaStream: MediaStream) => {
+    const videoDeviceId = mediaStream.getVideoTracks()[0]?.getSettings().deviceId || null;
+    const audioDeviceId = mediaStream.getAudioTracks()[0]?.getSettings().deviceId || null;
+    setSelectedDevices((prev) => ({
+      videoDeviceId: prev.videoDeviceId || videoDeviceId,
+      audioDeviceId: prev.audioDeviceId || audioDeviceId,
     }));
   }, []);
 
-  // Listen for device changes
   useEffect(() => {
-    enumerateDevices();
-    
-    navigator.mediaDevices.addEventListener('devicechange', enumerateDevices);
+    void enumerateDevices(true);
+    const onDeviceChange = () => {
+      void enumerateDevices(false);
+    };
+    navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', enumerateDevices);
+      navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange);
     };
   }, [enumerateDevices]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [stream]);
+  }, []);
 
-  const videoDevices = devices.filter(d => d.kind === 'videoinput');
-  const audioDevices = devices.filter(d => d.kind === 'audioinput');
+  const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+  const audioDevices = devices.filter((d) => d.kind === 'audioinput');
 
   return {
     devices,
@@ -172,6 +188,7 @@ export const useMediaDevices = () => {
     error,
     isLoading,
     selectDevice,
+    syncSelectedFromStream,
     getStream,
     getScreenShare,
     stopStream,
