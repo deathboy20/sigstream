@@ -186,7 +186,7 @@ const PreviewSetupPage: React.FC = () => {
   const actionButtonText = mode === 'host' ? 'Start Meeting' : 'Join Meeting';
 
   return (
-    <div className="h-[100dvh] overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col">
+    <div className="h-[100dvh] overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#070B14] dark:text-white flex flex-col">
       <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
         <div className="p-2 sm:p-3 md:p-6 w-full">
           <div className="max-w-6xl mx-auto">
@@ -194,13 +194,13 @@ const PreviewSetupPage: React.FC = () => {
         <div className="mb-4 sm:mb-6 md:mb-8 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 md:gap-4">
           <button
             onClick={() => navigate('/meet')}
-            className="p-2 hover:bg-slate-700 rounded-lg transition-colors flex-shrink-0"
+            className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors flex-shrink-0"
           >
-            <ArrowLeft className="h-5 w-5 text-gray-400" />
+            <ArrowLeft className="h-5 w-5 text-slate-600 dark:text-gray-400" />
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white">{pageTitle}</h1>
-            <p className="text-xs sm:text-sm md:text-base text-gray-400 mt-1 break-words">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">{pageTitle}</h1>
+            <p className="text-xs sm:text-sm md:text-base text-slate-500 dark:text-gray-400 mt-1 break-words">
               {pageDesc}
               {sigtrack.teamName ? ` · Team: ${sigtrack.teamName}` : ''}
             </p>
@@ -220,9 +220,9 @@ const PreviewSetupPage: React.FC = () => {
           {/* Preview Panel - Full width on mobile, spans 2 cols on desktop */}
           <div className="md:col-span-2 space-y-3 sm:space-y-4">
             {/* Video Preview */}
-            <Card className="bg-slate-800/50 border-slate-700">
+            <Card className="bg-white border-slate-200 dark:bg-white/[0.04] dark:border-white/[0.08]">
               <CardHeader className="pb-2 sm:pb-3 md:pb-4">
-                <CardTitle className="text-base sm:text-lg md:text-xl text-white">Preview</CardTitle>
+                <CardTitle className="text-base sm:text-lg md:text-xl text-slate-900 dark:text-white">Preview</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">Your camera and audio preview</CardDescription>
               </CardHeader>
               <CardContent>
@@ -270,18 +270,18 @@ const PreviewSetupPage: React.FC = () => {
 
             {/* Audio Level Card */}
             {stream && hasAudioTrack && (
-              <Card className="bg-slate-800/50 border-slate-700">
+              <Card className="bg-white border-slate-200 dark:bg-white/[0.04] dark:border-white/[0.08]">
                 <CardContent className="pt-3 sm:pt-4 md:pt-6">
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs sm:text-sm font-medium text-gray-300 block mb-2">Microphone Level</label>
-                      <div className="h-6 sm:h-8 bg-slate-900 rounded-lg overflow-hidden border border-slate-600">
+                      <label className="text-xs sm:text-sm font-medium text-slate-600 dark:text-gray-300 block mb-2">Microphone Level</label>
+                      <div className="h-6 sm:h-8 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 dark:bg-slate-900 dark:border-slate-600">
                         <div
                           className="h-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 transition-all"
                           style={{ width: `${audioLevel}%` }}
                         />
                       </div>
-                      <p className="text-xs text-gray-400 mt-2">
+                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-2">
                         {microphoneMuted ? 'Microphone is muted' : 'Microphone is active'}
                       </p>
                     </div>
@@ -295,9 +295,9 @@ const PreviewSetupPage: React.FC = () => {
           <div className="space-y-3 sm:space-y-4">
             {/* Input Type Selection - Only show for host */}
             {mode === 'host' && (
-              <Card className="bg-slate-800/50 border-slate-700">
+              <Card className="bg-white border-slate-200 dark:bg-white/[0.04] dark:border-white/[0.08]">
                 <CardHeader className="pb-2 sm:pb-3">
-                  <CardTitle className="text-base sm:text-lg text-white">Input Source</CardTitle>
+                  <CardTitle className="text-base sm:text-lg text-slate-900 dark:text-white">Input Source</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <button
@@ -305,7 +305,7 @@ const PreviewSetupPage: React.FC = () => {
                     className={`w-full flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg transition-all text-sm sm:text-base ${
                       selectedInputType === 'camera'
                         ? 'bg-blue-600 text-white border border-blue-500'
-                        : 'bg-slate-700/50 text-gray-300 border border-slate-600 hover:bg-slate-600'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 dark:bg-slate-700/50 dark:text-gray-300 dark:border-slate-600 dark:hover:bg-slate-600'
                     }`}
                   >
                     <Video className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
@@ -316,7 +316,7 @@ const PreviewSetupPage: React.FC = () => {
                     className={`w-full flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg transition-all text-sm sm:text-base ${
                       selectedInputType === 'screen'
                         ? 'bg-blue-600 text-white border border-blue-500'
-                        : 'bg-slate-700/50 text-gray-300 border border-slate-600 hover:bg-slate-600'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 dark:bg-slate-700/50 dark:text-gray-300 dark:border-slate-600 dark:hover:bg-slate-600'
                     }`}
                   >
                     <Monitor className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
@@ -328,16 +328,16 @@ const PreviewSetupPage: React.FC = () => {
 
             {/* Camera Selection */}
             {selectedInputType === 'camera' && (
-              <Card className="bg-slate-800/50 border-slate-700">
+              <Card className="bg-white border-slate-200 dark:bg-white/[0.04] dark:border-white/[0.08]">
                 <CardHeader className="pb-2 sm:pb-3">
-                  <CardTitle className="text-base sm:text-lg text-white">Camera</CardTitle>
+                  <CardTitle className="text-base sm:text-lg text-slate-900 dark:text-white">Camera</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {videoDevices.length > 0 ? (
                     <select
                       value={selectedDevices.videoDeviceId || ''}
                       onChange={(e) => selectVideoDevice(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      className="w-full bg-white border border-slate-200 text-slate-900 dark:bg-slate-900 dark:border-slate-600 dark:text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                     >
                       <option value="">Select camera...</option>
                       {videoDevices.map(device => (
@@ -347,23 +347,23 @@ const PreviewSetupPage: React.FC = () => {
                       ))}
                     </select>
                   ) : (
-                    <p className="text-gray-400 text-xs sm:text-sm">No cameras found</p>
+                    <p className="text-slate-500 dark:text-gray-400 text-xs sm:text-sm">No cameras found</p>
                   )}
                 </CardContent>
               </Card>
             )}
 
             {/* Microphone Selection */}
-            <Card className="bg-slate-800/50 border-slate-700">
+            <Card className="bg-white border-slate-200 dark:bg-white/[0.04] dark:border-white/[0.08]">
               <CardHeader className="pb-2 sm:pb-3">
-                <CardTitle className="text-base sm:text-lg text-white">Microphone</CardTitle>
+                <CardTitle className="text-base sm:text-lg text-slate-900 dark:text-white">Microphone</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {audioDevices.length > 0 ? (
                   <select
                     value={selectedDevices.audioDeviceId || ''}
                     onChange={(e) => selectAudioDevice(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="w-full bg-white border border-slate-200 text-slate-900 dark:bg-slate-900 dark:border-slate-600 dark:text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   >
                     <option value="">Select microphone...</option>
                     {audioDevices.map(device => (
@@ -373,13 +373,13 @@ const PreviewSetupPage: React.FC = () => {
                     ))}
                   </select>
                 ) : (
-                  <p className="text-gray-400 text-xs sm:text-sm">No microphones found</p>
+                  <p className="text-slate-500 dark:text-gray-400 text-xs sm:text-sm">No microphones found</p>
                 )}
               </CardContent>
             </Card>
 
             {/* Action Buttons */}
-            <div className="space-y-2 md:space-y-3 sticky bottom-0 bg-gradient-to-t from-slate-900 via-slate-900 to-transparent p-3 sm:p-0 -mx-2 sm:-mx-3 md:mx-0 md:p-0 md:bg-none md:sticky-auto">
+            <div className="space-y-2 md:space-y-3 sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent dark:from-[#070B14] dark:via-[#070B14] p-3 sm:p-0 -mx-2 sm:-mx-3 md:mx-0 md:p-0 md:bg-none md:sticky-auto">
               {!stream ? (
                 <Button
                   onClick={handleStartPreview}
@@ -394,7 +394,7 @@ const PreviewSetupPage: React.FC = () => {
                     <Button
                       onClick={handleToggleMute}
                       variant="outline"
-                      className="flex-1 text-white border-slate-600 hover:bg-slate-700 h-9 sm:h-10 text-xs sm:text-sm"
+                      className="flex-1 bg-white text-slate-800 border-slate-200 hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800 dark:text-white dark:border-slate-600 dark:hover:bg-slate-700 dark:hover:text-white h-9 sm:h-10 text-xs sm:text-sm"
                     >
                       {microphoneMuted ? (
                         <>
@@ -411,7 +411,7 @@ const PreviewSetupPage: React.FC = () => {
                     <Button
                       onClick={handleStartPreview}
                       variant="outline"
-                      className="flex-1 text-white border-slate-600 hover:bg-slate-700 h-9 sm:h-10 text-xs sm:text-sm"
+                      className="flex-1 bg-white text-slate-800 border-slate-200 hover:bg-slate-100 hover:text-slate-900 dark:bg-slate-800 dark:text-white dark:border-slate-600 dark:hover:bg-slate-700 dark:hover:text-white h-9 sm:h-10 text-xs sm:text-sm"
                     >
                       Change
                     </Button>

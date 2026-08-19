@@ -44,7 +44,7 @@ const DeviceSwitcher: React.FC<DeviceSwitcherProps> = ({
           variant="outline"
           size={compact ? 'sm' : 'default'}
           disabled={disabled}
-          className="text-white border-slate-600 hover:bg-slate-700 flex items-center gap-2 h-9 sm:h-10 px-2 sm:px-3"
+          className="flex items-center gap-2 h-9 sm:h-10 px-2 sm:px-3 !bg-white !text-slate-800 border-slate-200 hover:!bg-slate-100 hover:!text-slate-900 dark:!bg-slate-800 dark:!text-white dark:border-slate-600 dark:hover:!bg-slate-700 dark:hover:!text-white"
           title={`Switch ${label}`}
         >
           <Icon className="h-4 w-4 flex-shrink-0" />
@@ -55,10 +55,10 @@ const DeviceSwitcher: React.FC<DeviceSwitcherProps> = ({
 
       <DropdownMenuContent
         align="end"
-        className="w-48 sm:w-56 bg-slate-800/95 border-slate-700 text-white"
+        className="w-48 sm:w-56 bg-white border-slate-200 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
       >
         <DropdownMenuLabel className="text-xs sm:text-sm">Select {label}</DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-slate-700" />
+        <DropdownMenuSeparator className="bg-slate-200 dark:bg-slate-700" />
 
         {devices.length > 0 ? (
           devices.map((device) => (
@@ -70,13 +70,13 @@ const DeviceSwitcher: React.FC<DeviceSwitcherProps> = ({
               }}
               className={`text-xs sm:text-sm cursor-pointer flex items-center gap-2 ${
                 device.deviceId === selectedDeviceId
-                  ? 'bg-blue-600/20 text-blue-400'
-                  : 'hover:bg-slate-700/50'
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-600/20 dark:text-blue-400'
+                  : 'hover:bg-slate-100 dark:hover:bg-slate-700/50'
               }`}
             >
               <div
                 className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  device.deviceId === selectedDeviceId ? 'bg-blue-400' : 'bg-slate-600'
+                  device.deviceId === selectedDeviceId ? 'bg-blue-600 dark:bg-blue-400' : 'bg-slate-300 dark:bg-slate-600'
                 }`}
               />
               <span className="truncate">{device.label}</span>

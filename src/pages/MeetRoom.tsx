@@ -61,6 +61,8 @@ import {
   type ConnectionQuality,
 } from '../lib/meetRtc';
 
+const MEET_ICON_BTN = 'h-10 w-10 md:h-12 md:w-12 rounded-full border border-slate-200 bg-white text-slate-800 hover:bg-slate-100 hover:text-slate-900 dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 dark:hover:text-white';
+
 interface Participant {
   id: string;
   stream: MediaStream | null;
@@ -1598,8 +1600,8 @@ const MeetRoom: React.FC = () => {
   };
 
   return (
-    <div className="h-[100dvh] bg-[#202124] flex flex-col text-white overflow-hidden font-sans">
-      <header className="px-2 sm:px-4 py-2 border-b border-zinc-800/50 flex items-center justify-between gap-2 sticky top-0 bg-[#202124]/80 backdrop-blur-md z-50">
+    <div className="h-[100dvh] bg-slate-100 text-slate-900 dark:bg-[#202124] dark:text-white flex flex-col overflow-hidden font-sans">
+      <header className="px-2 sm:px-4 py-2 border-b border-slate-200 bg-white/90 dark:border-zinc-800/50 dark:bg-[#202124]/80 backdrop-blur-md z-50 flex items-center justify-between gap-2 sticky top-0">
         <div className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0" onClick={() => navigate(IS_STANDALONE ? '/meet' : '/teleconference/meet')}>
           <img src="/sigtrack-tube.png" alt="WAR ROOM" className="h-8 w-auto" />
           <span className="text-base sm:text-xl font-semibold truncate">WAR ROOM</span>
@@ -1609,7 +1611,7 @@ const MeetRoom: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-lg border-white/15 bg-white/5 text-white hover:bg-white/10 px-2 sm:px-3"
+            className="h-8 rounded-lg border-slate-200 bg-white text-slate-800 hover:bg-slate-100 hover:text-slate-900 dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10 px-2 sm:px-3"
             onClick={() => navigate('/dashboard')}
           >
             <ArrowLeft className="h-4 w-4 sm:mr-1.5" />
@@ -1619,7 +1621,7 @@ const MeetRoom: React.FC = () => {
           <Button
             variant="ghost"
             size="icon"
-            className={`relative rounded-full ${(isMobile ? chatOpen : activeSidebar === 'chat') ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`}
+            className={`relative rounded-full ${(isMobile ? chatOpen : activeSidebar === 'chat') ? 'text-primary bg-primary/10' : 'text-slate-700 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10'}`}
             onClick={() => {
               if (isMobile) {
                 setChatOpen(true);
@@ -1678,7 +1680,7 @@ const MeetRoom: React.FC = () => {
           <Button
             variant="ghost"
             size="icon"
-            className={`rounded-full ${activeSidebar === 'participants' ? 'text-primary bg-primary/10' : 'hover:bg-white/10'}`}
+            className={`rounded-full ${activeSidebar === 'participants' ? 'text-primary bg-primary/10' : 'text-slate-700 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10'}`}
             onClick={() => {
               if (isMobile) {
                 setParticipantsOpen(true);
@@ -1731,7 +1733,7 @@ const MeetRoom: React.FC = () => {
           </Dialog>
           <Dialog open={shareOpen} onOpenChange={setShareOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full hover:bg-white/10">
+              <Button variant="ghost" size="icon" className="rounded-full text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-white dark:hover:bg-white/10 dark:hover:text-white">
                 <Share2 className="h-5 w-5" />
               </Button>
             </DialogTrigger>
@@ -2139,13 +2141,13 @@ const MeetRoom: React.FC = () => {
       </div>
 
       {/* Bottom Bar */}
-      <div className="min-h-24 md:h-24 px-2 sm:px-3 md:px-6 py-2 md:py-0 flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0 bg-[#202124] border-t border-zinc-800/50 relative z-50">
-        <div className="hidden md:flex items-center gap-4 text-sm font-medium text-zinc-400 w-1/4">
+      <div className="min-h-24 md:h-24 px-2 sm:px-3 md:px-6 py-2 md:py-0 flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0 bg-white border-t border-slate-200 dark:bg-[#202124] dark:border-zinc-800/50 relative z-50">
+        <div className="hidden md:flex items-center gap-4 text-sm font-medium text-slate-500 dark:text-zinc-400 w-1/4">
           <div className="flex flex-col">
-            <span className="text-white text-base tabular-nums">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            <span className="text-slate-900 dark:text-white text-base tabular-nums">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <span className="text-blue-500">|</span>
-              <span className="text-blue-300 font-bold">{meetingId}</span>
+              <span className="text-blue-600 dark:text-blue-300 font-bold">{meetingId}</span>
               {isHost && <span className="px-1.5 py-0.5 bg-primary/20 text-primary text-[9px] font-black rounded uppercase tracking-tighter border border-primary/20">Host</span>}
               <span className="text-zinc-500">|</span>
               {renderNetworkLabel()}
@@ -2154,11 +2156,11 @@ const MeetRoom: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 w-full md:flex-1 justify-center px-0 md:px-0">
-          <div className="w-full md:w-auto flex items-center justify-start sm:justify-center flex-nowrap md:flex-nowrap gap-2 md:gap-3 bg-blue-500/40 p-2 rounded-2xl md:rounded-full border border-white/5 backdrop-blur-md overflow-x-auto scrollbar-invisible">
+          <div className="w-full md:w-auto flex items-center justify-start sm:justify-center flex-nowrap md:flex-nowrap gap-2 md:gap-3 bg-slate-100 p-2 rounded-2xl md:rounded-full border border-slate-200 dark:bg-zinc-800/90 dark:border-white/10 backdrop-blur-md overflow-x-auto scrollbar-invisible">
             <Button
               variant="ghost"
               size="icon"
-              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isMuted ? 'bg-destructive text-white hover:bg-destructive/80 scale-95' : 'bg-blue-500/10 hover:bg-blue-500/10'}`}
+              className={`${MEET_ICON_BTN} ${isMuted ? '!bg-destructive !text-white hover:!bg-destructive/80 hover:!text-white scale-95' : ''}`}
               onClick={toggleMute}
             >
               {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
@@ -2176,7 +2178,7 @@ const MeetRoom: React.FC = () => {
             <Button
               variant="ghost"
               size="icon"
-              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isVideoOff ? 'bg-destructive text-white hover:bg-destructive/80 scale-95' : 'bg-blue-500/10 hover:bg-blue-500/10'}`}
+              className={`${MEET_ICON_BTN} ${isVideoOff ? '!bg-destructive !text-white hover:!bg-destructive/80 hover:!text-white scale-95' : ''}`}
               onClick={toggleVideo}
             >
               {isVideoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
@@ -2195,7 +2197,7 @@ const MeetRoom: React.FC = () => {
               variant="ghost"
               size="icon"
               title={isPipOpen ? 'Stop pop-out' : 'Pop out meeting'}
-              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isPipOpen ? 'bg-primary text-white' : 'bg-blue-500/10 hover:bg-blue-500/10'}`}
+              className={`${MEET_ICON_BTN} ${isPipOpen ? '!bg-primary !text-white hover:!text-white' : ''}`}
               onClick={() => {
                 void (async () => {
                   if (isPipOpen) {
@@ -2217,7 +2219,7 @@ const MeetRoom: React.FC = () => {
               size="icon"
               title={!canScreenShare ? 'Screen share is not supported on this device (e.g. iOS Safari)' : isScreenSharing ? 'Stop sharing' : 'Share screen'}
               disabled={!canScreenShare}
-              className={`h-10 w-10 md:h-12 md:w-12 rounded-full transition-all ${!canScreenShare ? 'opacity-50 cursor-not-allowed' : ''} ${isScreenSharing ? 'bg-primary text-white hover:bg-primary/80' : 'bg-blue-500/10 hover:bg-blue-500/10 border border-white/10'}`}
+              className={`${MEET_ICON_BTN} ${!canScreenShare ? 'opacity-50 cursor-not-allowed' : ''} ${isScreenSharing ? '!bg-primary !text-white hover:!bg-primary/80 hover:!text-white' : ''}`}
               onClick={async () => {
                 if (!canScreenShare) return;
                 if (!isScreenSharing) {
@@ -2257,7 +2259,7 @@ const MeetRoom: React.FC = () => {
               variant="ghost"
               size="icon"
               title={isRecording ? 'Stop recording' : 'Start local recording (saved to your device)'}
-              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isRecording ? 'bg-red-600/80 text-white hover:bg-red-600 scale-95' : 'bg-blue-500/10 hover:bg-blue-500/10'}`}
+              className={`${MEET_ICON_BTN} ${isRecording ? '!bg-red-600/80 !text-white hover:!bg-red-600 hover:!text-white scale-95' : ''}`}
               onClick={isRecording ? stopRecording : startRecording}
             >
               <span className="relative flex items-center justify-center">
@@ -2268,13 +2270,13 @@ const MeetRoom: React.FC = () => {
             {/* Reactions Trigger */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-blue-500/10 hover:bg-blue-500/10 border border-white/10">
+                <Button variant="ghost" size="icon" className={MEET_ICON_BTN}>
                   <span className="text-xl">😊</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="grid grid-cols-4 gap-2 p-2 bg-blue-500/10 border-blue-500/10 rounded-2xl shadow-2xl">
+              <DropdownMenuContent className="grid grid-cols-4 gap-2 p-2 bg-white border-slate-200 dark:bg-zinc-800 dark:border-white/10 rounded-2xl shadow-2xl">
                 {['💖', '👍', '🎉', '👏', '😂', '😮', '😢', '🤔'].map((emoji) => (
-                  <Button key={emoji} variant="ghost" className="h-10 w-10 text-xl p-0 hover:bg-white/10" onClick={() => sendReaction(emoji)}>
+                  <Button key={emoji} variant="ghost" className="h-10 w-10 text-xl p-0 hover:bg-slate-100 dark:hover:bg-white/10" onClick={() => sendReaction(emoji)}>
                     {emoji}
                   </Button>
                 ))}
@@ -2286,7 +2288,7 @@ const MeetRoom: React.FC = () => {
               variant="ghost"
               size="icon"
               title={isHandRaised ? 'Lower hand' : 'Raise hand'}
-              className={`h-10 w-10 md:h-12 md:w-12 rounded-full border border-white/10 transition-all ${isHandRaised ? 'bg-amber-500 text-white hover:bg-amber-500/90' : 'bg-zinc-700 hover:bg-zinc-600'}`}
+              className={`${MEET_ICON_BTN} ${isHandRaised ? '!bg-amber-500 !text-white hover:!bg-amber-500/90 hover:!text-white' : ''}`}
               onClick={toggleHand}
             >
               <span className="text-lg">✋</span>
@@ -2308,7 +2310,7 @@ const MeetRoom: React.FC = () => {
                 variant="ghost"
                 size="icon"
                 title="Enable camera and microphone"
-                className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400"
+                className="h-10 w-10 md:h-12 md:w-12 rounded-full bg-green-600 hover:bg-green-700 text-white border border-green-600"
                 onClick={enableMediaDevices}
               >
                 <Mic className="h-5 w-5" />
@@ -2502,7 +2504,7 @@ const HostGlobalControls: React.FC<{
         <Button
           variant="ghost"
           size="icon"
-          className="relative h-10 w-10 md:h-12 md:w-12 rounded-full bg-blue-500/10 hover:bg-blue-500/10 border border-white/10"
+          className={`relative ${MEET_ICON_BTN}`}
         >
           <MoreVertical className="h-5 w-5" />
           {pendingCount > 0 && (
@@ -2512,27 +2514,27 @@ const HostGlobalControls: React.FC<{
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 bg-blue-500/10 border-blue-500/10 text-white">
+      <DropdownMenuContent align="end" className="w-56 bg-white border-slate-200 text-slate-900 dark:bg-zinc-900 dark:border-zinc-800 dark:text-white">
         <DropdownMenuLabel>Host Controls</DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-blue-500/10" />
-        <DropdownMenuItem onClick={() => handleAction('mute-all')} className="hover:bg-blue-500 cursor-pointer">
+        <DropdownMenuSeparator className="bg-slate-200 dark:bg-zinc-800" />
+        <DropdownMenuItem onClick={() => handleAction('mute-all')} className="hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer">
           <MicOff className="mr-2 h-4 w-4" /> Mute All
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleAction('unmute-all')} className="hover:bg-zinc-800 cursor-pointer">
+        <DropdownMenuItem onClick={() => handleAction('unmute-all')} className="hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer">
           <Mic className="mr-2 h-4 w-4" /> Unmute All
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onLowerHands} className="hover:bg-zinc-800 cursor-pointer">
+        <DropdownMenuItem onClick={onLowerHands} className="hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer">
           <Hand className="mr-2 h-4 w-4" /> Lower all hands
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onLockToggle} className="hover:bg-zinc-800 cursor-pointer">
+        <DropdownMenuItem onClick={onLockToggle} className="hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer">
           {locked ? <Unlock className="mr-2 h-4 w-4" /> : <Lock className="mr-2 h-4 w-4" />}
           {locked ? 'Unlock meeting' : 'Lock meeting'}
         </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-blue-500/10" />
-        <DropdownMenuItem onClick={() => handleAction('close-video-all')} className="hover:bg-blue-500 cursor-pointer">
+        <DropdownMenuSeparator className="bg-slate-200 dark:bg-zinc-800" />
+        <DropdownMenuItem onClick={() => handleAction('close-video-all')} className="hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer">
           <VideoOff className="mr-2 h-4 w-4" /> Close All Videos
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => handleAction('open-video-all')} className="hover:bg-blue-500/10 cursor-pointer">
+        <DropdownMenuItem onClick={() => handleAction('open-video-all')} className="hover:bg-slate-100 dark:hover:bg-zinc-800 cursor-pointer">
           <Video className="mr-2 h-4 w-4" /> Open All Videos
         </DropdownMenuItem>
       </DropdownMenuContent>
